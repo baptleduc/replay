@@ -23,7 +23,7 @@ jobs:
       - name: Verify commits message format
         run: |
           git log --pretty=format:"%s" |
-          grep -vE "^(feat|fix|build|chore|docs|style|refactor|test|perf)\: " &&
+          grep -vE "^(feat|fix|build|chore|doc|style|refactor|test|perf)(\([^)]+\))?\: " &&
           echo "❌ Invalid commit message format." && exit 1 || echo "✅ Commit messages are valid."
 
       - name: Check formatting
