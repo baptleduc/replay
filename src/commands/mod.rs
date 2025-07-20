@@ -8,7 +8,7 @@ pub mod record;
 pub mod run;
 
 /// This trait is the common runner trait
-pub trait CommandRunner {
+pub trait RunnableCommand {
     /// A runner method is needed for each command
     fn run(&self) -> Result<(), &'static str>;
 }
