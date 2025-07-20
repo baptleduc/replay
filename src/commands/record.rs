@@ -1,10 +1,13 @@
-use super::CommandRunner;
+use super::RunnableCommand;
+use clap::Args;
 
+#[derive(Args)]
 pub struct RecordCommand {
+    /// Optional session name
     session_name: Option<String>,
 }
 
-impl CommandRunner for RecordCommand {
+impl RunnableCommand for RecordCommand {
     fn run(&self) -> Result<(), &'static str> {
         todo!("Implement the running function");
         Ok(())
