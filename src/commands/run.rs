@@ -1,10 +1,10 @@
 use super::RunnableCommand;
+use super::session::Session;
 use clap::Args;
 
 #[derive(Args)]
 pub struct RunCommand {
-    session_name: String,
-
+    session_name: Option<String>,
     /// Show commands without executing them
     #[arg(short, long)]
     show: bool,
@@ -16,17 +16,15 @@ pub struct RunCommand {
 
 impl RunnableCommand for RunCommand {
     fn run(&self) -> Result<(), &'static str> {
-        todo!("Implement the run function for Run command");
-        Ok(())
-    }
-}
+        let session: Session = match &self.session_name {
+            Some(name) => Session::load_session(name)?,
+            None => Session::load_last_session()?,
+        };
 
-impl RunCommand {
-    pub fn new(session_name: String, show: bool, delay: u64) -> Self {
-        Self {
-            session_name,
-            show,
-            delay,
+        for command in Session::iter_commands(&session) {
+            todo!("Use pipe to pass command to shell thread");
         }
+
+        Ok(())
     }
 }

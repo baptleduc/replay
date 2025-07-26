@@ -22,6 +22,8 @@ pub mod commands;
 use args::CliParser;
 use clap::Parser;
 
+static DEFAULT_SESSION_PATH: &str = "~/.replay/session.json";
+
 /// Entrypoint called by the binary.
 /// Parses CLI arguments and run the appropriate command.
 pub fn run() -> Result<(), &'static str> {
