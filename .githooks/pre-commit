@@ -1,3 +1,4 @@
 #!/bin/sh
 echo "Running pre-commit hook"
 cargo fmt
+git add .
