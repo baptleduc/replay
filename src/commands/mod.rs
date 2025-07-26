@@ -6,6 +6,7 @@
 // Add commands mod below using pub mod ...
 pub mod record;
 pub mod run;
+pub mod session;
 
 /// This trait is the common runner trait
 pub trait RunnableCommand {

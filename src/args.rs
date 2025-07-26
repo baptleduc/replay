@@ -19,7 +19,7 @@ pub enum CliCommand {
     Run(run::RunCommand),
 
     /// Record a new session of shell commands
-    /// if a session name is provided, it will be used to label the recording
+    /// if a session name is provided, it will be used to labael the recording
     Record(record::RecordCommand),
 }
 
