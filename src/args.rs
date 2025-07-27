@@ -13,7 +13,7 @@ pub struct CliParser {
     pub command: Option<CliCommand>,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, PartialEq, Eq, Debug)]
 pub enum CliCommand {
     /// Run a replay on the specified session
     Run(run::RunCommand),
@@ -29,5 +29,31 @@ impl CliCommand {
             CliCommand::Run(cmd) => cmd.run(),
             CliCommand::Record(cmd) => cmd.run(),
         }
+    }
+}
+
+pub fn parse_command(args: &[String]) -> Option<CliCommand> {
+    CliParser::parse_from(args).command
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::panic;
+
+    #[test]
+    fn test_parse_command() {
+        // Test with valid record command : `replay record "test1"`
+        let args = [
+            String::from("replay"),
+            String::from("record"),
+            String::from("\"test1\""),
+        ];
+        let expected_command =
+            CliCommand::Record(record::RecordCommand::new(Some(String::from("\"test1\""))));
+        match parse_command(&args) {
+            Some(cmd) => assert_eq!(cmd, expected_command),
+            None => panic!("The parsing function from clap is not working"),
+        };
     }
 }

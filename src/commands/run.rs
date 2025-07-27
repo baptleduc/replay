@@ -2,7 +2,7 @@ use super::RunnableCommand;
 use super::session::Session;
 use clap::Args;
 
-#[derive(Args)]
+#[derive(Args, PartialEq, Eq, Debug)]
 pub struct RunCommand {
     session_name: Option<String>,
     /// Show commands without executing them

@@ -3,10 +3,11 @@
 // Argument parsing, command dispatching and core logic.
 
 use replay::run;
-use std::process;
+use std::{env, process};
 
 fn main() {
-    if let Err(err) = run() {
+    let args: Vec<String> = env::args().collect();
+    if let Err(err) = run(&args) {
         eprintln!("Error during core application: {}", err);
         process::exit(1)
     };
