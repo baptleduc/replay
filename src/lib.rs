@@ -18,21 +18,19 @@
 
 pub mod args;
 pub mod commands;
+pub mod errors;
 
 use args::CliParser;
 use clap::Parser;
+use errors::ReplayError;
 
-use crate::args::CliCommand;
+use crate::args::{CliCommand, parse_command};
 
 static DEFAULT_SESSION_PATH: &str = "~/.replay/session.json";
 
 /// Entrypoint called by the binary.
 /// Parses CLI arguments and run the appropriate command.
-pub fn run(args: &[String]) -> Result<(), &'static str> {
-    match args::parse_command(args) {
-        Some(cmd) => cmd.run(),
-        None => {
-            return Err("You didn't specify a command, perhaps you should try `--help`");
-        }
-    }
+pub fn run(args: &[String]) -> Result<(), ReplayError> {
+    let cmd = parse_command(&args)?;
+    cmd.run()
 }

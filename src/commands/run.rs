@@ -1,3 +1,5 @@
+use crate::errors::ReplayError;
+
 use super::RunnableCommand;
 use super::session::Session;
 use clap::Args;
@@ -15,7 +17,7 @@ pub struct RunCommand {
 }
 
 impl RunnableCommand for RunCommand {
-    fn run(&self) -> Result<(), &'static str> {
+    fn run(&self) -> Result<(), ReplayError> {
         let session: Session = match &self.session_name {
             Some(name) => Session::load_session(name)?,
             None => Session::load_last_session()?,
@@ -26,5 +28,16 @@ impl RunnableCommand for RunCommand {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl RunCommand {
+    pub fn new(session_name: Option<String>, show: bool, delay: u64) -> Self {
+        RunCommand {
+            session_name,
+            show,
+            delay,
+        }
     }
 }

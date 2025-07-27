@@ -1,4 +1,5 @@
 use crate::DEFAULT_SESSION_PATH;
+use crate::errors::ReplayError;
 use std::io;
 
 #[derive(Default)]
@@ -25,11 +26,11 @@ impl Session {
         todo!("implement json structure");
     }
 
-    pub fn load_session(session_name: &str) -> Result<Self, &'static str> {
-        todo!("Use DEFAULT_SESSION_PATH to load session by its name")
+    pub fn load_session(session_name: &str) -> Result<Self, ReplayError> {
+        todo!("Use DEFAULT_SESSION_PATH to load session by its name, and return SessionError")
     }
 
-    pub fn load_last_session() -> Result<Self, &'static str> {
+    pub fn load_last_session() -> Result<Self, ReplayError> {
         todo!("load last session");
     }
 
