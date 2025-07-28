@@ -8,7 +8,7 @@ use std::{env, process};
 fn main() {
     let args: Vec<String> = env::args().collect();
     if let Err(err) = run(&args) {
-        eprintln!("Error during core application: {}", err);
+        eprintln!("{}", err);
         process::exit(1)
     };
 }
