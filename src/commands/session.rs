@@ -9,6 +9,8 @@ pub struct Session {
     commands: Vec<String>,
 }
 
+pub type CommandsIter<'a> = std::iter::Map<std::slice::Iter<'a, String>, fn(&String) -> &str>;
+
 impl Session {
     pub fn new(session_name: String, description: Option<String>) -> Self {
         Self {
@@ -34,7 +36,7 @@ impl Session {
         todo!("load last session");
     }
 
-    pub fn iter_commands(&self) -> impl Iterator<Item = &String> {
-        self.commands.iter()
+    pub fn iter_commands(&self) -> CommandsIter {
+        self.commands.iter().map(|cmd| cmd.as_str())
     }
 }
