@@ -1,9 +1,12 @@
+//! RunCommand: Replay a recorded session with optional delay and dry-run.
+
 use crate::errors::ReplayError;
 
 use super::RunnableCommand;
 use super::session::Session;
 use clap::Args;
 
+/// CLI command to run a recorded session.
 #[derive(Args, PartialEq, Eq, Debug)]
 pub struct RunCommand {
     session_name: Option<String>,
