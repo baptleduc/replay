@@ -18,11 +18,10 @@ pub struct CliParser {
 
 #[derive(Subcommand, PartialEq, Eq, Debug)]
 pub enum CliCommand {
-    /// Run a replay on the specified session
+    /// Run a specified session, last session if not specified
     Run(run::RunCommand),
 
     /// Record a new session of shell commands
-    /// if a session name is provided, it will be used to labael the recording
     Record(record::RecordCommand),
 }
 
