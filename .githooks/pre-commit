@@ -1,4 +1,4 @@
 #!/bin/sh
 echo "Running pre-commit hook"
 cargo fmt
-git add .
+git diff --cached --name-only -- '*.rs' | xargs git add
