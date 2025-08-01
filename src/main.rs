@@ -13,6 +13,7 @@ fn main() {
             eprintln!("Impossible to quit the raw mode: {e}")
         }
         eprintln!("{}", err);
+        terminal::disable_raw_mode().unwrap();
         process::exit(1)
     };
 }
