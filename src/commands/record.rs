@@ -134,23 +134,48 @@ impl RecordCommand {
         }
     }
 }
+#[cfg(test)]
+struct RawModeReader {
+    data: Vec<u8>,
+    pos: usize,
+}
+#[cfg(test)]
+impl RawModeReader {
+    fn new(input: &[u8]) -> Self {
+        Self {
+            data: input.to_vec(),
+            pos: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+impl std::io::Read for RawModeReader {
+    // The following function simulate a raw mode reader reading 1 bytes from the input data at one time
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos >= self.data.len() {
+            return Ok(0);
+        }
+        buf[0] = self.data[self.pos];
+        self.pos += 1;
+        Ok(1)
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, io::Cursor};
+    use std::collections::HashMap;
 
     use super::*;
 
     #[test]
     fn record_command_creates_valid_json_sessions() {
         let cmd1 = RecordCommand::new(None);
-        let fake_input1 = b"ls\recho test\rexit\r";
-        let mut reader1 = Cursor::new(fake_input1);
+        let mut reader1 = RawModeReader::new(b"ls\recho test\rexit\r");
         cmd1.run_internal(&mut reader1).unwrap();
 
         let cmd2 = RecordCommand::new(None);
-        let fake_input2 = b"ls\rexit\r";
-        let mut reader2 = Cursor::new(fake_input2);
+        let mut reader2 = RawModeReader::new(b"ls\r echo test\r exit\r");
         cmd2.run_internal(&mut reader2).unwrap();
 
         let file_path = Session::get_default_session_path();
