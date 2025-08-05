@@ -1,9 +1,12 @@
 use super::RunnableCommand;
 use crate::args::validate_session_description;
 use crate::errors::ReplayError;
+use crate::session::Session;
+use chrono::Utc;
 use clap::Args;
 use crossterm::terminal;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::thread;
 
@@ -11,6 +14,35 @@ use std::thread;
 pub struct RecordCommand {
     #[arg(value_parser=validate_session_description)]
     session_description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RecordedCommand {
+    cmd_str: String,
+    cmd_raw: Vec<u8>,
+    timestamp: chrono::DateTime<Utc>,
+    user: String,
+}
+
+impl RecordedCommand {
+    pub fn new(cmd_raw: Vec<u8>) -> Self {
+        let cmd_str = String::from_utf8_lossy(&cmd_raw).to_string();
+        let timestamp = chrono::Utc::now();
+        let user = whoami::username();
+        RecordedCommand {
+            cmd_str,
+            cmd_raw,
+            timestamp,
+            user,
+        }
+    }
+    pub fn to_json_file(&self) -> Result<(), ReplayError> {
+        let json_data =
+            serde_json::to_string(self).map_err(|e| ReplayError::ExportError(e.to_string()))?;
+        std::fs::write(Session::get_default_session_path(), json_data)
+            .map_err(|e| ReplayError::ExportError(e.to_string()))?;
+        Ok(())
+    }
 }
 
 impl RunnableCommand for RecordCommand {
@@ -40,7 +72,8 @@ impl RunnableCommand for RecordCommand {
 
         // Main thread sends user input to bash stdin
         let mut stdin = std::io::stdin();
-        let mut buf = [0u8; 1];
+        let mut buf = [0u8; 1024];
+        let mut cmd_raw: Vec<u8> = Vec::new();
 
         loop {
             if let Some(_) = child.try_wait()? {
@@ -49,9 +82,16 @@ impl RunnableCommand for RecordCommand {
             }
             match stdin.read(&mut buf)? {
                 0 => break,
-                _ => {
+                n => {
                     master_writer.write_all(&buf)?;
-                    // TODO parse to json the buffered entry
+                    cmd_raw.extend_from_slice(&buf[..n]);
+
+                    if cmd_raw.ends_with(b"\r") {
+                        // If the command ends with a newline, we consider it complete.
+                        let recorded_command = RecordedCommand::new(cmd_raw);
+                        recorded_command.to_json_file()?;
+                        cmd_raw = Vec::new(); // Reset for the next command
+                    }
                 }
             }
         }

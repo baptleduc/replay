@@ -3,7 +3,7 @@
 use crate::errors::ReplayError;
 
 use super::RunnableCommand;
-use super::session::Session;
+use crate::session::Session;
 use clap::Args;
 
 /// CLI command to run a recorded session.
