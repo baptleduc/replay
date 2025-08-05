@@ -7,7 +7,7 @@ use clap::Args;
 use crossterm::terminal;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
+use std::io::{Read, Write, stdout};
 use std::thread;
 
 #[derive(Args, PartialEq, Eq, Debug)]
@@ -47,6 +47,13 @@ impl RecordedCommand {
 
 impl RunnableCommand for RecordCommand {
     fn run(&self) -> Result<(), ReplayError> {
+        let mut reader = std::io::stdin();
+        self.run_internal(&mut reader)
+    }
+}
+
+impl RecordCommand {
+    fn run_internal<R: Read>(&self, input_reader: &mut R) -> Result<(), ReplayError> {
         terminal::enable_raw_mode()?;
         let pty_system = NativePtySystem::default();
 
@@ -71,7 +78,6 @@ impl RunnableCommand for RecordCommand {
         let output_reader = thread::spawn(move || read_from_pty(master_reader));
 
         // Main thread sends user input to bash stdin
-        let mut stdin = std::io::stdin();
         let mut buf = [0u8; 1024];
         let mut cmd_raw: Vec<u8> = Vec::new();
 
@@ -80,12 +86,11 @@ impl RunnableCommand for RecordCommand {
                 // replay message
                 break;
             }
-            match stdin.read(&mut buf)? {
+            match input_reader.read(&mut buf)? {
                 0 => break,
                 n => {
                     master_writer.write_all(&buf)?;
                     cmd_raw.extend_from_slice(&buf[..n]);
-
                     if cmd_raw.ends_with(b"\r") {
                         // If the command ends with a newline, we consider it complete.
                         let recorded_command = RecordedCommand::new(cmd_raw);
@@ -112,8 +117,11 @@ fn read_from_pty(mut reader: Box<dyn Send + Read>) -> Result<(), ReplayError> {
         if n == 0 {
             break;
         }
-        std::io::stdout().write_all(&buffer[..n])?;
-        std::io::stdout().flush()?;
+        #[cfg(not(test))]
+        {
+            std::io::stdout().write_all(&buffer[..n])?;
+            std::io::stdout().flush()?;
+        }
     }
     Ok(())
 }
@@ -124,5 +132,54 @@ impl RecordCommand {
         RecordCommand {
             session_description: desc,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, io::Cursor};
+
+    use super::*;
+
+    #[test]
+    fn record_command_creates_valid_json_sessions() {
+        let cmd1 = RecordCommand::new(None);
+        let fake_input1 = b"ls\recho test\rexit\r";
+        let mut reader1 = Cursor::new(fake_input1);
+        cmd1.run_internal(&mut reader1).unwrap();
+
+        let cmd2 = RecordCommand::new(None);
+        let fake_input2 = b"ls\rexit\r";
+        let mut reader2 = Cursor::new(fake_input2);
+        cmd2.run_internal(&mut reader2).unwrap();
+
+        let file_path = Session::get_default_session_path();
+        let content = std::fs::read_to_string(&file_path).unwrap();
+
+        let sessions: HashMap<String, Vec<RecordedCommand>> = serde_json::from_str(&content)
+            .expect("The json structure doesn't correspond to the expected session format");
+
+        assert!(
+            sessions.contains_key("replay@{0}"),
+            "Session should contain the replay@{}",
+            { 0 }
+        );
+        let session1 = &sessions["replay@{0}"];
+
+        assert_eq!(session1[0].cmd_str, "ls");
+        assert_eq!(session1[0].cmd_raw, "ls".as_bytes());
+
+        assert_eq!(session1[1].cmd_str, "echo test");
+        assert_eq!(session1[1].cmd_raw, "echo test".as_bytes());
+
+        assert!(
+            sessions.contains_key("replay@{1}"),
+            "Session should contain replay{}",
+            { 1 }
+        );
+        let session2 = &sessions["replay@{1}"];
+
+        assert_eq!(session2[0].cmd_str, "ls");
+        assert_eq!(session2[0].cmd_raw, "ls".as_bytes());
     }
 }
