@@ -9,6 +9,8 @@ pub enum ReplayError {
 
     #[error("Session error: {0}")]
     SessionError(String),
+    #[error("Export error: {0}")]
+    ExportError(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

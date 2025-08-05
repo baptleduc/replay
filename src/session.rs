@@ -1,6 +1,5 @@
-use crate::DEFAULT_SESSION_PATH;
 use crate::errors::ReplayError;
-use std::io;
+use std::env;
 
 #[derive(Default)]
 pub struct Session {
@@ -38,5 +37,10 @@ impl Session {
 
     pub fn iter_commands(&self) -> CommandsIter {
         self.commands.iter().map(|cmd| cmd.as_str())
+    }
+
+    pub fn get_default_session_path() -> String {
+        let home_dir = env::var("HOME").unwrap_or_else(|_| String::from("/home/user"));
+        format!("{}/.replay/sessions.json", home_dir)
     }
 }
