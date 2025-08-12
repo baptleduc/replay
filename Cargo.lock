@@ -683,9 +683,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.98"
+version = "1.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7442a916bc70e3bf71a5305a899d53301649d2838345fa309420318b5ffafe8"
+checksum = "89ae43fd86e4158d6db51ad8e2b80f313af9cc74f5c0e03ccb87de09998732de"
 dependencies = [
  "unicode-ident",
 ]
@@ -735,6 +735,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "portable-pty",
+ "rev_lines",
  "serde",
  "serde_json",
  "serial_test",
@@ -742,6 +743,15 @@ dependencies = [
  "thiserror 2.0.15",
  "whoami",
  "zstd",
+]
+
+[[package]]
+name = "rev_lines"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed62916ac7a5ccbf13fa5e1d303029ff015600fee841756dfc134a1ac62bf05f"
+dependencies = [
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -771,9 +781,9 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 
 [[package]]
 name = "scc"
-version = "2.3.4"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22b2d775fb28f245817589471dd49c5edf64237f4a19d10ce9a92ff4651a27f4"
+checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
 dependencies = [
  "sdd",
 ]
@@ -812,9 +822,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.142"
+version = "1.0.143"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "030fedb782600dcbd6f02d479bf0d817ac3bb40d644745b769d6a96bc3afc5a7"
+checksum = "d401abef1d108fbd9cbaebc3e46611f4b1021f714a0597a71f41ee463f5f4a5a"
 dependencies = [
  "itoa",
  "memchr",

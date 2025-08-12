@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
 
+
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
     pub description: Option<String>,
