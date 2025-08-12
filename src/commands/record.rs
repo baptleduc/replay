@@ -1,48 +1,17 @@
 use super::RunnableCommand;
 use crate::args::validate_session_description;
 use crate::errors::ReplayError;
-use crate::session::Session;
-use chrono::Utc;
+use crate::session::{Session, TEST_ID};
 use clap::Args;
 use crossterm::terminal;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
-use serde::{Deserialize, Serialize};
-use std::io::{Read, Write, stdout};
+use std::io::{Read, Write};
 use std::thread;
 
 #[derive(Args, PartialEq, Eq, Debug)]
 pub struct RecordCommand {
     #[arg(value_parser=validate_session_description)]
     session_description: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct RecordedCommand {
-    cmd_str: String,
-    cmd_raw: Vec<u8>,
-    timestamp: chrono::DateTime<Utc>,
-    user: String,
-}
-
-impl RecordedCommand {
-    pub fn new(cmd_raw: Vec<u8>) -> Self {
-        let cmd_str = String::from_utf8_lossy(&cmd_raw).to_string();
-        let timestamp = chrono::Utc::now();
-        let user = whoami::username();
-        RecordedCommand {
-            cmd_str,
-            cmd_raw,
-            timestamp,
-            user,
-        }
-    }
-    pub fn to_json_file(&self) -> Result<(), ReplayError> {
-        let json_data =
-            serde_json::to_string(self).map_err(|e| ReplayError::ExportError(e.to_string()))?;
-        std::fs::write(Session::get_default_session_path(), json_data)
-            .map_err(|e| ReplayError::ExportError(e.to_string()))?;
-        Ok(())
-    }
 }
 
 impl RunnableCommand for RecordCommand {
@@ -80,6 +49,7 @@ impl RecordCommand {
         // Main thread sends user input to bash stdin
         let mut buf = [0u8; 1024];
         let mut cmd_raw: Vec<u8> = Vec::new();
+        let mut session = Session::new(self.session_description.clone()); // TODO : use .take() be self needs to be mut
 
         loop {
             if let Some(_) = child.try_wait()? {
@@ -93,9 +63,8 @@ impl RecordCommand {
                     cmd_raw.extend_from_slice(&buf[..n]);
                     if cmd_raw.ends_with(b"\r") {
                         // If the command ends with a newline, we consider it complete.
-                        let recorded_command = RecordedCommand::new(cmd_raw);
-                        recorded_command.to_json_file()?;
-                        cmd_raw = Vec::new(); // Reset for the next command
+                        session.add_command(cmd_raw.clone());
+                        cmd_raw.clear(); // Reset for the next command
                     }
                 }
             }
@@ -105,6 +74,9 @@ impl RecordCommand {
         output_reader.join().map_err(|paylod| {
             ReplayError::ThreadPanic(format!("`output_reader` with \n {:?}", paylod))
         })??;
+
+        session.save_session()?;
+
         Ok(())
     }
 }
@@ -164,8 +136,6 @@ impl std::io::Read for RawModeReader {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -174,37 +144,20 @@ mod tests {
         let mut reader1 = RawModeReader::new(b"ls\recho test\rexit\r");
         cmd1.run_internal(&mut reader1).unwrap();
 
-        let cmd2 = RecordCommand::new(None);
-        let mut reader2 = RawModeReader::new(b"ls\r echo test\r exit\r");
-        cmd2.run_internal(&mut reader2).unwrap();
-
-        let file_path = Session::get_default_session_path();
+        let file_path = String::from(Session::get_session_path(TEST_ID));
         let content = std::fs::read_to_string(&file_path).unwrap();
 
-        let sessions: HashMap<String, Vec<RecordedCommand>> = serde_json::from_str(&content)
+        let session: Session = serde_json::from_str(&content)
             .expect("The json structure doesn't correspond to the expected session format");
 
-        assert!(
-            sessions.contains_key("replay@{0}"),
-            "Session should contain the replay@{}",
-            { 0 }
-        );
-        let session1 = &sessions["replay@{0}"];
+        let mut command_iter = session.iter_commands();
 
-        assert_eq!(session1[0].cmd_str, "ls");
-        assert_eq!(session1[0].cmd_raw, "ls".as_bytes());
+        assert!(command_iter.next().unwrap() == "ls\r");
 
-        assert_eq!(session1[1].cmd_str, "echo test");
-        assert_eq!(session1[1].cmd_raw, "echo test".as_bytes());
+        assert!(command_iter.next().unwrap() == "echo test\r");
 
-        assert!(
-            sessions.contains_key("replay@{1}"),
-            "Session should contain replay{}",
-            { 1 }
-        );
-        let session2 = &sessions["replay@{1}"];
+        assert!(command_iter.next().unwrap() == "exit\r");
 
-        assert_eq!(session2[0].cmd_str, "ls");
-        assert_eq!(session2[0].cmd_raw, "ls".as_bytes());
+        assert!(session.description.is_none());
     }
 }
