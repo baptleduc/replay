@@ -21,6 +21,9 @@ pub enum ReplayError {
     #[error("Thread panicked: {0}")]
     ThreadPanic(String),
 
+    #[error("Error while reading line in reverse order: {0}")]
+    RevLinesError(#[from] rev_lines::RevLinesError),
+
     #[error("Unknown replay error")]
     Unknown,
 }

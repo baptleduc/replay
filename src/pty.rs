@@ -155,9 +155,12 @@ impl std::io::Read for RawModeReader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use serial_test::serial;
     use std::fs;
     use std::io::sink;
+
     #[test]
+    #[serial]
     fn record_creates_valid_json_sessions() {
         let reader1 = RawModeReader::new(b"ls\recho test\rexit\r");
         run_internal(reader1, Box::new(sink()), true, None).unwrap();

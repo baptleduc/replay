@@ -2,10 +2,12 @@ use crate::errors::ReplayError;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
+use std::env;
 
 #[cfg(not(test))]
-use std::{env, path::Path};
+use std::{path::Path};
 
 #[cfg(test)]
 use std::env::temp_dir;
@@ -18,6 +20,94 @@ pub struct Session {
     user: String,
     commands: Vec<String>,
 }
+struct SessionIndexFile;
+
+impl SessionIndexFile {
+    fn get_path() -> String {
+        format!(
+            "{}/.replay/session_idx",
+            env::var("HOME").unwrap_or_else(|_| String::from("/home/user"))
+        )
+    }
+    pub fn push_session(session_id: &str) -> Result<(), ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .append(true)
+            .open(Self::get_path())?;
+        writeln!(file, "{}", session_id)?;
+        Ok(())
+    }
+
+    fn get_last_line_offset() -> Result<u64, ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Self::get_path())?;
+        let mut pos = file.seek(SeekFrom::End(0))?;
+
+        let mut buf = [0u8; 1];
+        let mut newlines_found = 0;
+        let mut last_line_offset = 0;
+
+        // Read the file in reverse to find the last two newlines
+        while pos > 0 {
+            pos -= 1;
+            file.seek(SeekFrom::Start(pos))?;
+            file.read_exact(&mut buf)?;
+            if buf[0] == b'\n' {
+                newlines_found += 1;
+                if newlines_found == 2 {
+                    last_line_offset = pos + 1; // start of the last line
+                    break;
+                }
+            }
+        }
+
+        if newlines_found == 1 {
+            return Ok(0);
+        }
+
+        if newlines_found == 0 {
+            return Err(ReplayError::SessionError(String::from("No sessions found")));
+        }
+
+        Ok(last_line_offset)
+    }
+
+    pub fn peek_session_id() -> Result<String, ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Self::get_path())?;
+        let last_line_offset = Self::get_last_line_offset()?;
+
+        // Read last line
+        file.seek(SeekFrom::Start(last_line_offset))?;
+        let mut session_id = String::new();
+        file.read_to_string(&mut session_id)?;
+
+        Ok(session_id.trim_end_matches('\n').to_string())
+    }
+
+    pub fn pop_session_id() -> Result<String, ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Self::get_path())?;
+        let last_line_offset = Self::get_last_line_offset()?;
+        let session_id = Self::peek_session_id()?;
+
+        // Truncate the file to remove the last line
+        file.set_len(last_line_offset)?;
+        file.flush()?;
+
+        Ok(session_id)
+    }
+}
+
+#[cfg(test)]
+pub const TEST_ID: &str = "test_session";
 
 impl Session {
     pub fn new(description: Option<String>) -> Result<Self, ReplayError> {
@@ -33,6 +123,7 @@ impl Session {
         })
     }
 
+    #[cfg(not(test))]
     fn generate_id(
         description: &Option<String>,
         timestamp: &chrono::DateTime<Utc>,
@@ -47,6 +138,15 @@ impl Session {
         hasher.update(timestamp.to_rfc3339().as_bytes());
 
         format!("{:x}", hasher.finalize())
+    }
+
+    #[cfg(test)]
+    fn generate_id(
+        _description: &Option<String>,
+        _timestamp: &chrono::DateTime<Utc>,
+        _user: &str,
+    ) -> String {
+        TEST_ID.to_string()
     }
 
     pub fn add_command(&mut self, cmd_raw: Vec<u8>) {
@@ -69,10 +169,8 @@ impl Session {
 
     pub fn save_session(&self) -> Result<(), ReplayError> {
         let json = serde_json::to_string_pretty(&self)?;
-        #[cfg(not(test))]
         std::fs::write(Self::get_session_path(&self.id), json)?;
-        #[cfg(test)]
-        std::fs::write(Self::get_session_path("test_session"), json)?;
+        SessionIndexFile::push_session(&self.id)?;
         Ok(())
     }
 
@@ -101,5 +199,57 @@ impl Session {
 
     pub fn get_session_path(id: &str) -> PathBuf {
         Self::get_sessions_dir().join(format!("{}.json", id))
+    }
+}
+
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    fn setup() {
+        let _ = std::fs::remove_file(SessionIndexFile::get_path());
+    }
+
+    #[test]
+    #[serial]
+    fn test_session_creation() {
+        setup();
+        let session = Session::new(Some("test session".into())).unwrap();
+        assert_eq!(session.description, Some("test session".into()));
+        assert_eq!(session.id, TEST_ID);
+    }
+
+    #[test]
+    #[serial]
+    fn test_session_saving() {
+        setup();
+        let session = Session::new(Some("test session".into())).unwrap();
+        session.save_session().unwrap();
+        assert!(std::path::Path::new(&Session::get_session_path(&session.id)).exists());
+    }
+
+    #[test]
+    #[serial]
+    fn test_session_index_file() {
+        setup();
+        let session_1 = Session::new(Some("test session 1".into())).unwrap();
+        session_1.save_session().unwrap();
+        assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_1.id);
+
+        let session_2 = Session::new(Some("test session 2".into())).unwrap();
+        session_2.save_session().unwrap();
+        assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_2.id);
+        assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_2.id);
+        assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_1.id);
+
+        // Test popping and peeking from empty index file returns error
+        assert!(matches!(
+            SessionIndexFile::pop_session_id(),
+            Err(ReplayError::SessionError(_))
+        ));
+        assert!(matches!(
+            SessionIndexFile::peek_session_id(),
+            Err(ReplayError::SessionError(_))
+        ));
     }
 }
