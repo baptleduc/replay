@@ -8,6 +8,7 @@ use std::path::PathBuf;
 #[cfg(not(test))]
 use sha2::{Digest, Sha256};
 
+
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
     pub description: Option<String>,
