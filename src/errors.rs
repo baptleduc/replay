@@ -1,5 +1,5 @@
+use serde_json::Error as SerdeError;
 use std::any::Any;
-
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -9,8 +9,9 @@ pub enum ReplayError {
 
     #[error("Session error: {0}")]
     SessionError(String),
+
     #[error("Export error: {0}")]
-    ExportError(String),
+    ExportError(#[from] SerdeError),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
