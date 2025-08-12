@@ -1,26 +1,150 @@
 use crate::errors::ReplayError;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use serial_test::serial;
+use sha2::{Digest, Sha256};
 use std::env;
+use std::io::{Read, Seek, SeekFrom, Write};
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct Session {
-    pub name: String,
     pub description: Option<String>,
+    pub id: String,
+    timestamp: chrono::DateTime<Utc>,
+    user: String,
     commands: Vec<String>,
 }
+struct SessionIndexFile;
 
-pub type CommandsIter<'a> = std::iter::Map<std::slice::Iter<'a, String>, fn(&String) -> &str>;
+impl SessionIndexFile {
+    fn get_path() -> String {
+        format!(
+            "{}/.replay/session_idx",
+            env::var("HOME").unwrap_or_else(|_| String::from("/home/user"))
+        )
+    }
+    pub fn push_session(session_id: &str) -> Result<(), ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .append(true)
+            .open(Self::get_path())?;
+        writeln!(file, "{}", session_id)?;
+        Ok(())
+    }
+
+    fn get_last_line_offset() -> Result<u64, ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Self::get_path())?;
+        let mut pos = file.seek(SeekFrom::End(0))?;
+
+        let mut buf = [0u8; 1];
+        let mut newlines_found = 0;
+        let mut last_line_offset = 0;
+
+        // Read the file in reverse to find the last two newlines
+        while pos > 0 {
+            pos -= 1;
+            file.seek(SeekFrom::Start(pos))?;
+            file.read_exact(&mut buf)?;
+            if buf[0] == b'\n' {
+                newlines_found += 1;
+                if newlines_found == 2 {
+                    last_line_offset = pos + 1; // start of the last line
+                    break;
+                }
+            }
+        }
+
+        if newlines_found == 1 {
+            return Ok(0);
+        }
+
+        if newlines_found == 0 {
+            return Err(ReplayError::SessionError(String::from("No sessions found")));
+        }
+
+        Ok(last_line_offset)
+    }
+
+    pub fn peek_session_id() -> Result<String, ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Self::get_path())?;
+        let last_line_offset = Self::get_last_line_offset()?;
+
+        // Read last line
+        file.seek(SeekFrom::Start(last_line_offset))?;
+        let mut session_id = String::new();
+        file.read_to_string(&mut session_id)?;
+
+        Ok(session_id.trim_end_matches('\n').to_string())
+    }
+
+    pub fn pop_session_id() -> Result<String, ReplayError> {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(Self::get_path())?;
+        let last_line_offset = Self::get_last_line_offset()?;
+        let session_id = Self::peek_session_id()?;
+
+        // Truncate the file to remove the last line
+        file.set_len(last_line_offset)?;
+        file.flush()?;
+
+        Ok(session_id)
+    }
+}
+
+#[cfg(test)]
+pub const TEST_ID: &str = "test_session";
 
 impl Session {
-    pub fn new(session_name: String, description: Option<String>) -> Self {
+    pub fn new(description: Option<String>) -> Self {
+        let user = whoami::username();
+        let timestamp = Utc::now();
         Self {
-            name: session_name,
-            description,
             commands: Vec::new(),
+            id: Self::generate_id(&description, &timestamp, &user),
+            description: description,
+            timestamp,
+            user,
         }
     }
 
-    pub fn add_command(&mut self, command: String) {
-        self.commands.push(command);
+    #[cfg(not(test))]
+    fn generate_id(
+        description: &Option<String>,
+        timestamp: &chrono::DateTime<Utc>,
+        user: &str,
+    ) -> String {
+        let mut hasher = Sha256::new();
+
+        hasher.update(user.as_bytes());
+        if let Some(desc) = description {
+            hasher.update(desc.as_bytes());
+        }
+        hasher.update(timestamp.to_rfc3339().as_bytes());
+
+        format!("{:x}", hasher.finalize())
+    }
+
+    #[cfg(test)]
+    fn generate_id(
+        description: &Option<String>,
+        timestamp: &chrono::DateTime<Utc>,
+        user: &str,
+    ) -> String {
+        TEST_ID.to_string()
+    }
+
+    pub fn add_command(&mut self, cmd_raw: Vec<u8>) {
+        self.commands
+            .push(String::from_utf8_lossy(&cmd_raw).to_string());
     }
 
     pub fn to_json(&self) {
@@ -35,12 +159,74 @@ impl Session {
         todo!("load last session");
     }
 
-    pub fn iter_commands(&self) -> CommandsIter {
-        self.commands.iter().map(|cmd| cmd.as_str())
+    pub fn save_session(&self) -> Result<(), ReplayError> {
+        let json = serde_json::to_string_pretty(&self)?;
+        std::fs::write(Self::get_session_path(&self.id), json)?;
+        SessionIndexFile::push_session(&self.id)?;
+        Ok(())
     }
 
-    pub fn get_default_session_path() -> String {
-        let home_dir = env::var("HOME").unwrap_or_else(|_| String::from("/home/user"));
-        format!("{}/.replay/sessions.json", home_dir)
+    pub fn iter_commands(&self) -> impl Iterator<Item = &String> + '_ {
+        // We use impl Iterator to not have to declare RecordedCommand public
+        self.commands.iter()
+    }
+
+    pub fn get_session_path(id: &str) -> String {
+        format!(
+            "{}/{}.json",
+            env::var("HOME").unwrap_or_else(|_| String::from("/home/user/.replay/sessions")),
+            id
+        )
+    }
+}
+
+mod tests {
+    use super::*;
+
+    fn setup() {
+        let _ = std::fs::remove_file(SessionIndexFile::get_path());
+    }
+
+    #[test]
+    #[serial]
+    fn test_session_creation() {
+        setup();
+        let session = Session::new(Some("test session".into()));
+        assert_eq!(session.description, Some("test session".into()));
+        assert_eq!(session.id, TEST_ID);
+    }
+
+    #[test]
+    #[serial]
+    fn test_session_saving() {
+        setup();
+        let session = Session::new(Some("test session".into()));
+        session.save_session().unwrap();
+        assert!(std::path::Path::new(&Session::get_session_path(&session.id)).exists());
+    }
+
+    #[test]
+    #[serial]
+    fn test_session_index_file() {
+        setup();
+        let session_1 = Session::new(Some("test session 1".into()));
+        session_1.save_session().unwrap();
+        assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_1.id);
+
+        let session_2 = Session::new(Some("test session 2".into()));
+        session_2.save_session().unwrap();
+        assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_2.id);
+        assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_2.id);
+        assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_1.id);
+
+        // Test popping and peeking from empty index file returns error
+        assert!(matches!(
+            SessionIndexFile::pop_session_id(),
+            Err(ReplayError::SessionError(_))
+        ));
+        assert!(matches!(
+            SessionIndexFile::peek_session_id(),
+            Err(ReplayError::SessionError(_))
+        ));
     }
 }

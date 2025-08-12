@@ -1,5 +1,4 @@
-use std::any::Any;
-
+use serde_json::Error as SerdeError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -9,8 +8,9 @@ pub enum ReplayError {
 
     #[error("Session error: {0}")]
     SessionError(String),
+
     #[error("Export error: {0}")]
-    ExportError(String),
+    ExportError(#[from] SerdeError),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -20,6 +20,9 @@ pub enum ReplayError {
 
     #[error("Thread panicked: {0}")]
     ThreadPanic(String),
+
+    #[error("Error while reading line in reverse order: {0}")]
+    RevLinesError(#[from] rev_lines::RevLinesError),
 
     #[error("Unknown replay error")]
     Unknown,
