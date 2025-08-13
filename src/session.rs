@@ -65,7 +65,10 @@ impl Session {
 
     pub fn save_session(&self) -> Result<(), ReplayError> {
         let json = serde_json::to_string_pretty(&self)?;
+        #[cfg(not(test))]
         std::fs::write(Self::get_session_path(&self.id), json)?;
+        #[cfg(test)]
+        std::fs::write(Self::get_session_path("test_session"), json)?;
         Ok(())
     }
 
