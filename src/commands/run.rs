@@ -1,10 +1,11 @@
 //! RunCommand: Replay a recorded session with optional delay and dry-run.
 
-use crate::errors::ReplayError;
-
 use super::RunnableCommand;
+use crate::errors::ReplayError;
+use crate::pty::{RawModeReader, run_internal};
 use crate::session::Session;
 use clap::Args;
+use std::io::stdout;
 
 /// CLI command to run a recorded session.
 #[derive(Args, PartialEq, Eq, Debug)]
@@ -25,11 +26,10 @@ impl RunnableCommand for RunCommand {
             Some(name) => Session::load_session(name)?,
             None => Session::load_last_session()?,
         };
-
-        for command in Session::iter_commands(&session) {
-            todo!("Use pipe to pass command to shell thread");
-        }
-
+        let commands: String = session.iter_commands().map(|s| s.as_str()).collect();
+        let input = RawModeReader::new(commands.as_bytes());
+        let output = stdout();
+        run_internal(input, output, false, None)?;
         Ok(())
     }
 }
