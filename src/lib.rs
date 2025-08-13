@@ -15,6 +15,7 @@
 pub mod args;
 pub mod commands;
 pub mod errors;
+pub mod pty;
 pub mod session;
 
 use args::CliParser;
