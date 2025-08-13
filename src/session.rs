@@ -135,9 +135,9 @@ impl Session {
 
     #[cfg(test)]
     fn generate_id(
-        description: &Option<String>,
-        timestamp: &chrono::DateTime<Utc>,
-        user: &str,
+        _description: &Option<String>,
+        _timestamp: &chrono::DateTime<Utc>,
+        _user: &str,
     ) -> String {
         TEST_ID.to_string()
     }
@@ -174,7 +174,9 @@ impl Session {
     pub fn get_session_path(id: &str) -> String {
         format!(
             "{}/{}.json",
-            env::var("HOME").unwrap_or_else(|_| String::from("/home/user/.replay/sessions")),
+            env::var("HOME")
+                .map(|home| home + "/.replay/sessions/")
+                .unwrap_or_else(|_| String::from("/home/user/.replay/sessions")),
             id
         )
     }

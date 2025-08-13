@@ -1,7 +1,7 @@
 use super::RunnableCommand;
 use crate::args::validate_session_description;
 use crate::errors::ReplayError;
-use crate::session::{Session, TEST_ID};
+use crate::session::Session;
 use clap::Args;
 use crossterm::terminal;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
@@ -138,6 +138,7 @@ impl std::io::Read for RawModeReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::TEST_ID;
 
     #[test]
     #[serial]
