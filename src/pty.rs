@@ -1,17 +1,40 @@
 use crate::errors::ReplayError;
 use crate::session::Session;
 use crossterm::terminal;
-use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
-use std::thread;
+use std::thread::{self, JoinHandle};
+
+type Reader = Box<dyn Read + Send>;
+type Writer = Box<dyn Write + Send>;
+type ChildProc = Box<dyn Child + Send + Sync>;
 
 pub fn run_internal<R: Read, W: Write + Send + 'static>(
-    mut user_input: R,            // input from user (stdin, pipe…)
-    user_output: W,               // output to user (stdout, file…)
-    record_user_input: bool,      // enable recording of typed commands
-    session_info: Option<String>, // optional session description
+    mut user_input: R,                   // input from user (stdin, pipe…)
+    user_output: W,                      // output to user (stdout, file…)
+    record_user_input: bool,             // enable recording of typed commands
+    session_description: Option<String>, // optional session description
 ) -> Result<(), ReplayError> {
     terminal::enable_raw_mode()?;
+
+    let (pty_stdout, mut pty_stdin, mut child) = spawn_shell()?;
+
+    // Thread to read from the PTY and send data by user_output.
+    let output_reader = thread::spawn(move || read_from_pty(pty_stdout, user_output));
+
+    handle_user_input(
+        &mut user_input,
+        &mut pty_stdin,
+        record_user_input,
+        session_description,
+        &mut child,
+    )?;
+    terminal::disable_raw_mode()?;
+    join_output_thread(output_reader)?;
+    Ok(())
+}
+
+fn spawn_shell() -> Result<(Reader, Writer, ChildProc), ReplayError> {
     let pty_system = NativePtySystem::default();
 
     // Open a pseudo-terminal
@@ -24,67 +47,58 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
 
     // Spawn bash inside PTY
     let bash_cmd = CommandBuilder::new("/bin/bash");
-    let mut bash_process = pty_pair.slave.spawn_command(bash_cmd)?;
+    let bash_process = pty_pair.slave.spawn_command(bash_cmd)?;
     drop(pty_pair.slave); // not needed anymore
 
     // PTY handles for I/O
     let pty_stdout = pty_pair.master.try_clone_reader()?; // bash → user
-    let mut pty_stdin = pty_pair.master.take_writer()?; // user → bash
+    let pty_stdin = pty_pair.master.take_writer()?; // user → bash
+    Ok((pty_stdout, pty_stdin, bash_process))
+}
 
-    // Thread: forward PTY output to user output
-    let output_thread = thread::spawn(move || read_from_pty(pty_stdout, user_output));
-
-    // Buffers for input and command recording
-    let mut input_buffer = [0u8; 1024];
-    let mut current_command: Vec<u8> = Vec::new();
-
-    // Initialize session recording if enabled
-    let mut session: Option<Session> = if record_user_input {
-        Some(Session::new(session_info)?)
+fn handle_user_input<R: Read, W: Write>(
+    user_input: &mut R,
+    user_output: &mut W,
+    record_input: bool,
+    session_description: Option<String>,
+    child: &mut ChildProc,
+) -> Result<(), ReplayError> {
+    // Main thread sends user input to bash stdin
+    let mut buf = [0u8; 1024];
+    let mut cmd_raw: Vec<u8> = Vec::new();
+    let mut session: Option<Session> = if record_input {
+        Some(Session::new(session_description)?)
     } else {
         None
     };
 
     loop {
-        // Exit if bash process ended
-        if let Some(_) = bash_process.try_wait()? {
+        if let Some(_) = child.try_wait()? {
+            // Check if the child process has exited
             break;
         }
-
-        match user_input.read(&mut input_buffer)? {
-            0 => break, // no more input
+        match user_input.read(&mut buf)? {
+            0 => break,
             n => {
-                // Forward user input to bash (slave)
-                pty_stdin.write_all(&input_buffer[..n])?;
-
-                // Optionally record commands
-                if record_user_input {
-                    current_command.extend_from_slice(&input_buffer[..n]);
-                    if current_command.ends_with(b"\r") {
+                user_output.write_all(&buf)?;
+                user_output.flush()?;
+                if record_input {
+                    cmd_raw.extend_from_slice(&buf[..n]);
+                    if cmd_raw.ends_with(b"\r") {
                         if let Some(sess) = session.as_mut() {
-                            sess.add_command(current_command.clone());
+                            sess.add_command(cmd_raw.clone());
                         }
-                        current_command.clear();
+                        cmd_raw.clear();
                     }
                 }
             }
         }
     }
-
-    terminal::disable_raw_mode()?;
-
-    // Wait for output thread to finish
-    output_thread.join().map_err(|payload| {
-        ReplayError::ThreadPanic(format!("`output_thread` panicked with \n {:?}", payload))
-    })??;
-
-    // Save session if recording enabled
-    if record_user_input {
+    if record_input {
         if let Some(sess) = session.as_mut() {
             sess.save_session()?;
         }
     }
-
     Ok(())
 }
 
@@ -101,6 +115,16 @@ fn read_from_pty<R: Read + Send, W: Write + Send>(
         user_output.write_all(&buffer[..n])?;
         user_output.flush()?;
     }
+    Ok(())
+}
+
+fn join_output_thread(
+    output_thread: JoinHandle<Result<(), ReplayError>>,
+) -> Result<(), ReplayError> {
+    // We don't want the program to panic at any moment since we catch error in the main program
+    output_thread
+        .join()
+        .map_err(|err| ReplayError::ThreadPanic(format!("`user_output` with \n {:?}", err)))??;
     Ok(())
 }
 
