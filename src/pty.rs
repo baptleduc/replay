@@ -73,7 +73,7 @@ fn handle_user_input<R: Read, W: Write>(
     };
 
     loop {
-        if let Some(_) = child.try_wait()? {
+        if child.try_wait()?.is_some() {
             // Check if the child process has exited
             break;
         }
@@ -94,11 +94,11 @@ fn handle_user_input<R: Read, W: Write>(
             }
         }
     }
-    if record_input {
-        if let Some(sess) = session.as_mut() {
-            sess.save_session()?;
-        }
+
+    if record_input && session.as_mut().is_some() {
+        session.as_mut().unwrap().save_session()?;
     }
+
     Ok(())
 }
 
