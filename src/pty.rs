@@ -10,24 +10,24 @@ type Writer = Box<dyn Write + Send>;
 type ChildProc = Box<dyn Child + Send + Sync>;
 
 pub fn run_internal<R: Read, W: Write + Send + 'static>(
-    mut user_input: R,                   // input from user (stdin, pipe…)
+    user_input: R,                       // input from user (stdin, pipe…)
     user_output: W,                      // output to user (stdout, file…)
     record_user_input: bool,             // enable recording of typed commands
     session_description: Option<String>, // optional session description
 ) -> Result<(), ReplayError> {
     terminal::enable_raw_mode()?;
 
-    let (pty_stdout, mut pty_stdin, mut child) = spawn_shell()?;
+    let (pty_stdout, pty_stdin, child) = spawn_shell()?;
 
     // Thread to read from the PTY and send data by user_output.
     let output_reader = thread::spawn(move || read_from_pty(pty_stdout, user_output));
 
     handle_user_input(
-        &mut user_input,
-        &mut pty_stdin,
+        user_input,
+        pty_stdin,
         record_user_input,
         session_description,
-        &mut child,
+        child,
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
@@ -57,11 +57,11 @@ fn spawn_shell() -> Result<(Reader, Writer, ChildProc), ReplayError> {
 }
 
 fn handle_user_input<R: Read, W: Write>(
-    user_input: &mut R,
-    user_output: &mut W,
+    mut user_input: R,
+    mut user_output: W,
     record_input: bool,
     session_description: Option<String>,
-    child: &mut ChildProc,
+    mut child: ChildProc,
 ) -> Result<(), ReplayError> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1024];
@@ -159,8 +159,8 @@ mod test {
     use std::io::sink;
     #[test]
     fn record_creates_valid_json_sessions() {
-        let mut reader1 = RawModeReader::new(b"ls\recho test\rexit\r");
-        run_internal(&mut reader1, Box::new(sink()), true, None).unwrap();
+        let reader1 = RawModeReader::new(b"ls\recho test\rexit\r");
+        run_internal(reader1, Box::new(sink()), true, None).unwrap();
         let file_path = Session::get_session_path("test_session");
         let content = fs::read_to_string(&file_path).unwrap();
         let session: Session = serde_json::from_str(&content)

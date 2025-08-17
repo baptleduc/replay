@@ -14,9 +14,9 @@ pub struct RecordCommand {
 
 impl RunnableCommand for RecordCommand {
     fn run(&self) -> Result<(), ReplayError> {
-        let mut reader = stdin();
+        let reader = stdin();
         let writer = stdout();
-        run_internal(&mut reader, writer, true, self.session_description.clone())
+        run_internal(reader, writer, true, self.session_description.clone())
     }
 }
 
