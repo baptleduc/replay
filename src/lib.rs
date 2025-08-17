@@ -25,6 +25,6 @@ use crate::args::parse_command;
 /// Entrypoint called by the binary.
 /// Parses CLI arguments and run the appropriate command.
 pub fn run(args: &[String]) -> Result<(), ReplayError> {
-    let cmd = parse_command(&args)?;
+    let cmd = parse_command(args)?;
     cmd.run()
 }

@@ -24,7 +24,7 @@ impl Session {
         Ok(Self {
             commands: Vec::new(),
             id: Self::generate_id(&description, &timestamp, &user),
-            description: description,
+            description,
             timestamp,
             user,
         })
