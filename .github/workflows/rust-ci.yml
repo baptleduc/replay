@@ -1,0 +1,78 @@
+name: rust-ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    types: [opened, reopened, synchronize]
+  merge_group:
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+  RUSTDOCFLAGS: -Dwarnings
+
+jobs:
+  check-commits:
+    name: Check Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          
+      - run: git config --global --add safe.directory $GITHUB_WORKSPACE
+
+      - run: |
+          git log --pretty=format:"%s" |
+          grep -vE "^(feat|fix|build|chore|doc|style|refactor|test|perf)(\([^)]+\))?\: " &&
+          echo "❌ Invalid commit message format." && exit 1 || echo "✅ Commit messages are valid."
+
+  lint:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup show active-toolchain
+      - run: rustup component add rustfmt clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-features --all-targets -- -D clippy::all
+      # - uses: obi1kenobi/cargo-semver-checks-action@v2 # TODO : decomment when first publish has been done
+
+  
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo test --locked --workspace --all-features --doc
+      - run: cargo doc --locked --workspace --all-features --document-private-items --no-deps
+  
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest] # Possibility to add windows-latest when the project will support windows
+
+    name: Tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo test --locked --workspace --all-features --all-targets
+
