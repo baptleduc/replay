@@ -56,6 +56,7 @@ impl Session {
     }
 
     pub fn load_session(session_name: &str) -> Result<Self, ReplayError> {
+        let _ = session_name; // TODO: remove
         todo!("Use DEFAULT_SESSION_PATH to load session by its name, and return SessionError")
     }
 
