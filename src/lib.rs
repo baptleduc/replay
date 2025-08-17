@@ -18,11 +18,9 @@ pub mod errors;
 pub mod pty;
 pub mod session;
 
-use args::CliParser;
-use clap::Parser;
 use errors::ReplayError;
 
-use crate::args::{CliCommand, parse_command};
+use crate::args::parse_command;
 
 /// Entrypoint called by the binary.
 /// Parses CLI arguments and run the appropriate command.

@@ -1,5 +1,4 @@
 use serde_json::Error as SerdeError;
-use std::any::Any;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
