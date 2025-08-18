@@ -1,16 +1,10 @@
 use crate::errors::ReplayError;
+use crate::fs;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-use std::env;
-
-#[cfg(not(test))]
-use std::{path::Path};
-
-#[cfg(test)]
-use std::env::temp_dir;
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
@@ -23,11 +17,8 @@ pub struct Session {
 struct SessionIndexFile;
 
 impl SessionIndexFile {
-    fn get_path() -> String {
-        format!(
-            "{}/.replay/session_idx",
-            env::var("HOME").unwrap_or_else(|_| String::from("/home/user"))
-        )
+    fn get_path() -> PathBuf {
+        fs::get_sessions_dir().join("session_idx")
     }
 
     fn open_file() -> Result<std::fs::File, ReplayError> {
@@ -114,7 +105,6 @@ pub const TEST_ID: &str = "test_session";
 
 impl Session {
     pub fn new(description: Option<String>) -> Result<Self, ReplayError> {
-        Self::ensure_sessions_dir_exists()?;
         let user = whoami::username();
         let timestamp = Utc::now();
         Ok(Self {
@@ -181,27 +171,8 @@ impl Session {
         // We use impl Iterator to not have to declare RecordedCommand public
         self.commands.iter()
     }
-
-    #[cfg(not(test))]
-    fn get_sessions_dir() -> PathBuf {
-        env::var("HOME")
-            .map(|home| Path::new(&home).join(".replay/sessions"))
-            .unwrap_or_else(|_| Path::new("/home/user/.replay/sessions").to_path_buf())
-    }
-
-    #[cfg(test)]
-    fn get_sessions_dir() -> PathBuf {
-        temp_dir()
-    }
-
-    fn ensure_sessions_dir_exists() -> Result<(), ReplayError> {
-        // create the sessions dir if it doesn't already exists
-        std::fs::create_dir_all(Self::get_sessions_dir())?;
-        Ok(())
-    }
-
     pub fn get_session_path(id: &str) -> PathBuf {
-        Self::get_sessions_dir().join(format!("{}.json", id))
+        fs::get_sessions_dir().join(format!("{}.json", id))
     }
 }
 
