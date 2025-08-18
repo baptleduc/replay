@@ -2,10 +2,13 @@ use crate::errors::ReplayError;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
+
+#[cfg(not(test))]
+use std::{env, path::Path};
+
+#[cfg(test)]
+use std::env::temp_dir;
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
@@ -78,10 +81,16 @@ impl Session {
         self.commands.iter()
     }
 
+    #[cfg(not(test))]
     fn get_sessions_dir() -> PathBuf {
         env::var("HOME")
             .map(|home| Path::new(&home).join(".replay/sessions"))
             .unwrap_or_else(|_| Path::new("/home/user/.replay/sessions").to_path_buf())
+    }
+
+    #[cfg(test)]
+    fn get_sessions_dir() -> PathBuf {
+        temp_dir()
     }
 
     fn ensure_sessions_dir_exists() -> Result<(), ReplayError> {
