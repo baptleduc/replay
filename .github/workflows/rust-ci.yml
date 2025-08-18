@@ -74,5 +74,8 @@ jobs:
       - run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo test --locked --workspace --all-features --all-targets
+      # Allocate a PTY so openpty() works (see gfx/example-github-actions-with-tty)
+      - shell: 'script -q -e -c "bash {0}"'
+        run: |
+          cargo test --locked --workspace --all-features --all-targets --color=always
 
