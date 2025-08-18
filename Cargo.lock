@@ -699,22 +699,12 @@ dependencies = [
  "crossterm",
  "dirs",
  "portable-pty",
- "rev_lines",
  "serde",
  "serde_json",
  "serial_test",
  "sha2",
  "thiserror 2.0.15",
  "whoami",
-]
-
-[[package]]
-name = "rev_lines"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed62916ac7a5ccbf13fa5e1d303029ff015600fee841756dfc134a1ac62bf05f"
-dependencies = [
- "thiserror 1.0.69",
 ]
 
 [[package]]
