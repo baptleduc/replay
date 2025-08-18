@@ -1,13 +1,13 @@
 use crate::errors::ReplayError;
 use crate::paths;
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
-
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
@@ -16,6 +16,21 @@ pub struct Session {
     timestamp: chrono::DateTime<Utc>,
     user: String,
     commands: Vec<String>,
+}
+#[derive(Deserialize, Debug)]
+pub struct MetaData {
+    pub description: Option<String>,
+    pub timestamp: chrono::DateTime<Utc>,
+    #[serde(rename = "commands", deserialize_with = "first_two_commands")]
+    pub first_commands: Vec<String>,
+}
+
+fn first_two_commands<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let all: Vec<String> = Vec::deserialize(deserializer)?;
+    Ok(all.into_iter().take(2).collect())
 }
 struct SessionIndexFile;
 
@@ -140,6 +155,50 @@ impl SessionIndexFile {
 
         Ok(session_id)
     }
+
+    fn truncate_description(line: &str, max_len: usize) -> String {
+        let truncated: String = line.chars().take(max_len).collect();
+        if line.chars().count() > max_len {
+            truncated + "..."
+        } else {
+            truncated
+        }
+    }
+
+    fn display_metadata(metadata: MetaData) -> String {
+        if let Some(dess) = metadata.description {
+            Self::truncate_description(&dess, 50)
+        } else {
+            let list_message = format!(
+                "{} at: {}",
+                metadata.first_commands.join(" | "),
+                metadata.timestamp.format("%Y-%m-%d %H:%M:%S")
+            );
+            Self::truncate_description(&list_message, 50)
+        }
+    }
+
+    pub fn list() -> Result<Vec<String>, ReplayError> {
+        let file = Self::open_file()?;
+        let reader = BufReader::new(file);
+        let lignes: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
+
+        let result: Vec<String> = lignes
+            .into_iter()
+            .rev()
+            .enumerate()
+            .map(|(i, line)| -> Result<String, ReplayError> {
+                let session_metadata = Session::load_metadata(&line)?;
+                Ok(format!(
+                    "replay@{{{}}} {}",
+                    i,
+                    Self::display_metadata(session_metadata)
+                ))
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(result)
+    }
 }
 
 impl Session {
@@ -176,27 +235,31 @@ impl Session {
             .push(String::from_utf8_lossy(&cmd_raw).to_string());
     }
 
-    pub fn to_json(&self) {
-        todo!("implement json structure");
+    fn load_from_files<T: DeserializeOwned>(session_id: &str) -> Result<T, ReplayError> {
+        // Try compressed .zst first
+        let zst_path = Session::get_session_path(session_id, "zst");
+        if zst_path.exists() {
+            let file = File::open(zst_path)?;
+            let decoder = zstd::Decoder::new(file)?;
+            let data = serde_json::from_reader(decoder)?;
+            return Ok(data);
+        }
+
+        // Fallback to plain .json
+        let json_path = Session::get_session_path(session_id, "json");
+        let file = File::open(json_path)?;
+        let reader = BufReader::new(file);
+        let data = serde_json::from_reader(reader)?;
+        Ok(data)
     }
 
     pub fn load_session_by_index(index: u32) -> Result<Self, ReplayError> {
         let session_id = SessionIndexFile::get_session_id(index)?;
+        Session::load_from_files(&session_id)
+    }
 
-        // Decompress
-        let ztd_session_path = Session::get_session_path(&session_id, "zst");
-        if ztd_session_path.exists() {
-            let session_file = std::fs::File::open(ztd_session_path)?;
-            let decoder = zstd::Decoder::new(session_file)?;
-            let session = serde_json::from_reader(decoder)?;
-            Ok(session)
-        } else {
-            // If the zst file doesn't exist, try the json file
-            let json_session_path = Session::get_session_path(&session_id, "json");
-            let session_file = std::fs::File::open(json_session_path)?;
-            let session = serde_json::from_reader(session_file)?;
-            Ok(session)
-        }
+    pub fn load_metadata(session_id: &str) -> Result<MetaData, ReplayError> {
+        Session::load_from_files(session_id)
     }
 
     pub fn load_last_session() -> Result<Self, ReplayError> {
@@ -282,5 +345,35 @@ mod tests {
             SessionIndexFile::peek_session_id(),
             Err(ReplayError::SessionError(_))
         ));
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_format() {
+        setup();
+        let mut session_1 = Session::new(None).unwrap();
+        session_1.add_command("ls".into());
+        session_1.add_command("echo test".into());
+        session_1.save_session(true).unwrap();
+        let session_2 = Session::new(Some("test session 2".into())).unwrap();
+        session_2.save_session(true).unwrap();
+        let session_3 = Session::new(Some(
+            "test: session message is too long and should be truncated".into(),
+        ))
+        .unwrap();
+        session_3.save_session(true).unwrap();
+        let list_output = SessionIndexFile::list().unwrap();
+        assert_eq!(
+            "replay@{0} test: session message is too long and should be tr...",
+            list_output[0]
+        );
+        assert_eq!("replay@{1} test session 2", list_output[1]);
+        assert_eq!(
+            format!(
+                "replay@{{2}} ls | echo test at: {}",
+                session_1.timestamp.format("%Y-%m-%d %H:%M:%S")
+            ),
+            list_output[2]
+        );
     }
 }
