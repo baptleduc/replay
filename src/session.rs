@@ -1,13 +1,13 @@
 use crate::errors::ReplayError;
 use crate::paths;
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use std::io::{Read, Seek, SeekFrom, Write};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 #[cfg(not(test))]
 use sha2::{Digest, Sha256};
-
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
@@ -16,6 +16,21 @@ pub struct Session {
     timestamp: chrono::DateTime<Utc>,
     user: String,
     commands: Vec<String>,
+}
+#[derive(Deserialize, Debug)]
+pub struct MetaData {
+    pub description: Option<String>,
+    pub timestamp: chrono::DateTime<Utc>,
+    #[serde(rename = "commands", deserialize_with = "first_two_commands")]
+    pub first_commands: Vec<String>,
+}
+
+fn first_two_commands<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let all: Vec<String> = Vec::deserialize(deserializer)?;
+    Ok(all.into_iter().take(2).collect())
 }
 struct SessionIndexFile;
 
@@ -103,6 +118,52 @@ impl SessionIndexFile {
 
         Ok(session_id)
     }
+
+    fn truncate_description(line: &str, max_len: usize) -> String {
+        let truncated: String = line.chars().take(max_len).collect();
+        if line.chars().count() > max_len {
+            truncated + "..."
+        } else {
+            truncated
+        }
+    }
+
+    fn display_metadata(metadata: MetaData) -> String {
+        if let Some(dess) = metadata.description {
+            Self::truncate_description(&dess, 50)
+        } else {
+            let list_message = format!(
+                "{} at: {}",
+                metadata.first_commands.join(" | "),
+                metadata.timestamp.format("%Y-%m-%d %H:%M:%S")
+            );
+            Self::truncate_description(&list_message, 50)
+        }
+    }
+
+    pub fn list() -> Result<Vec<String>, ReplayError> {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .open(Self::get_path())?;
+        let reader = BufReader::new(file);
+        let lignes: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
+
+        let result: Vec<String> = lignes
+            .into_iter()
+            .rev()
+            .enumerate()
+            .map(|(i, line)| -> Result<String, ReplayError> {
+                let session_metadata = Session::load_metadata(&line)?;
+                Ok(format!(
+                    "replay@{{{}}} {}",
+                    i,
+                    Self::display_metadata(session_metadata)
+                ))
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -154,6 +215,12 @@ impl Session {
 
     pub fn to_json(&self) {
         todo!("implement json structure");
+    }
+
+    pub fn load_metadata(session_hash: &str) -> Result<MetaData, ReplayError> {
+        let file = File::open(Self::get_session_path(session_hash))?;
+        let metadata: MetaData = serde_json::from_reader(file)?;
+        Ok(metadata)
     }
 
     pub fn load_session(session_name: &str) -> Result<Self, ReplayError> {
@@ -231,5 +298,35 @@ mod tests {
             SessionIndexFile::peek_session_id(),
             Err(ReplayError::SessionError(_))
         ));
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_format() {
+        setup();
+        let mut session_1 = Session::new(None).unwrap();
+        session_1.add_command("ls".into());
+        session_1.add_command("echo test".into());
+        session_1.save_session().unwrap();
+        let session_2 = Session::new(Some("test session 2".into())).unwrap();
+        session_2.save_session().unwrap();
+        let session_3 = Session::new(Some(
+            "test: session message is too long and should be truncated".into(),
+        ))
+        .unwrap();
+        session_3.save_session().unwrap();
+        let list_output = SessionIndexFile::list().unwrap();
+        assert_eq!(
+            "replay@{0} test: session message is too long and should be tr...",
+            list_output[0]
+        );
+        assert_eq!("replay@{1} test session 2", list_output[1]);
+        assert_eq!(
+            format!(
+                "replay@{{2}} ls | echo test at: {}",
+                session_1.timestamp.format("%Y-%m-%d %H:%M:%S")
+            ),
+            list_output[2]
+        );
     }
 }
