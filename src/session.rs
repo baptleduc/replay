@@ -72,7 +72,9 @@ impl SessionIndexFile {
         }
 
         if newlines_found == 0 {
-            return Err(ReplayError::SessionError(String::from("No sessions found")));
+            return Err(ReplayError::SessionError(String::from(
+                "No replay entries found",
+            )));
         }
 
         Ok(last_line_offset)
