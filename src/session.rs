@@ -2,9 +2,11 @@ use crate::errors::ReplayError;
 use crate::fs;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
+
+#[cfg(not(test))]
+use sha2::{Digest, Sha256};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
@@ -23,7 +25,6 @@ impl SessionIndexFile {
 
     fn open_file() -> Result<std::fs::File, ReplayError> {
         Ok(std::fs::OpenOptions::new()
-            .write(true)
             .read(true)
             .create(true)
             .append(true)
@@ -72,6 +73,7 @@ impl SessionIndexFile {
     }
 
     /// Read the line starting at a given byte offset
+    #[allow(dead_code)] // TODO: Remove this when the function will be used
     fn read_line_at(offset: u64) -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
         file.seek(SeekFrom::Start(offset))?;
@@ -82,12 +84,14 @@ impl SessionIndexFile {
     }
 
     /// Get the last session id without modifying the file
+    #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn peek_session_id() -> Result<String, ReplayError> {
         let offset = Self::get_last_line_offset()?;
         Self::read_line_at(offset)
     }
 
     /// Get the last session id and remove it from the file
+    #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn pop_session_id() -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
         let offset = Self::get_last_line_offset()?;
