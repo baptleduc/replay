@@ -29,21 +29,24 @@ impl SessionIndexFile {
             env::var("HOME").unwrap_or_else(|_| String::from("/home/user"))
         )
     }
-    pub fn push_session(session_id: &str) -> Result<(), ReplayError> {
-        let mut file = std::fs::OpenOptions::new()
+
+    fn open_file() -> Result<std::fs::File, ReplayError> {
+        Ok(std::fs::OpenOptions::new()
             .write(true)
+            .read(true)
             .create(true)
             .append(true)
-            .open(Self::get_path())?;
+            .open(Self::get_path())?)
+    }
+
+    pub fn push_session(session_id: &str) -> Result<(), ReplayError> {
+        let mut file = Self::open_file()?;
         writeln!(file, "{}", session_id)?;
         Ok(())
     }
 
     fn get_last_line_offset() -> Result<u64, ReplayError> {
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(Self::get_path())?;
+        let mut file = Self::open_file()?;
         let mut pos = file.seek(SeekFrom::End(0))?;
 
         let mut buf = [0u8; 1];
@@ -75,31 +78,29 @@ impl SessionIndexFile {
         Ok(last_line_offset)
     }
 
-    pub fn peek_session_id() -> Result<String, ReplayError> {
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(Self::get_path())?;
-        let last_line_offset = Self::get_last_line_offset()?;
+    /// Read the line starting at a given byte offset
+    fn read_line_at(offset: u64) -> Result<String, ReplayError> {
+        let mut file = Self::open_file()?;
+        file.seek(SeekFrom::Start(offset))?;
 
-        // Read last line
-        file.seek(SeekFrom::Start(last_line_offset))?;
-        let mut session_id = String::new();
-        file.read_to_string(&mut session_id)?;
-
-        Ok(session_id.trim_end_matches('\n').to_string())
+        let mut buf = String::new();
+        file.read_to_string(&mut buf)?;
+        Ok(buf.trim_end_matches('\n').to_string())
     }
 
-    pub fn pop_session_id() -> Result<String, ReplayError> {
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(Self::get_path())?;
-        let last_line_offset = Self::get_last_line_offset()?;
-        let session_id = Self::peek_session_id()?;
+    /// Get the last session id without modifying the file
+    pub fn peek_session_id() -> Result<String, ReplayError> {
+        let offset = Self::get_last_line_offset()?;
+        Self::read_line_at(offset)
+    }
 
-        // Truncate the file to remove the last line
-        file.set_len(last_line_offset)?;
+    /// Get the last session id and remove it from the file
+    pub fn pop_session_id() -> Result<String, ReplayError> {
+        let mut file = Self::open_file()?;
+        let offset = Self::get_last_line_offset()?;
+        let session_id = Self::read_line_at(offset)?;
+
+        file.set_len(offset)?; // truncate at the start of last line
         file.flush()?;
 
         Ok(session_id)
@@ -202,6 +203,7 @@ impl Session {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use serial_test::serial;
