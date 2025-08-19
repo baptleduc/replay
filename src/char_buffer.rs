@@ -8,7 +8,7 @@ impl CharBuffer {
     }
 
     pub fn from_vec(buf: Vec<u8>) -> Self {
-        CharBuffer { buf: buf }
+        CharBuffer { buf }
     }
 
     /// Return the popped character
@@ -27,7 +27,7 @@ impl CharBuffer {
     /// Return the length of the popped word
     pub fn pop_word(&mut self) -> Option<usize> {
         // Remove trailing spaces
-        while Self::peek_char(&self) == Some(&b' ') {
+        while self.peek_char() == Some(&b' ') {
             self.pop_char();
         }
 
@@ -58,6 +58,12 @@ impl CharBuffer {
     }
 }
 
+impl Default for CharBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::CharBuffer;
@@ -68,7 +74,7 @@ mod test {
         assert_eq!(buf.pop_char(), Some(b'c'));
         assert_eq!(buf.pop_char(), Some(b'b'));
         assert_eq!(buf.pop_char(), Some(b'a'));
-        assert_eq!(buf.pop_char(), None); // vide → None
+        assert_eq!(buf.pop_char(), None);
     }
 
     #[test]
@@ -79,7 +85,7 @@ mod test {
         assert_eq!(buf.pop_word(), Some(5)); // `world` is 5 long
         assert_eq!(buf.get_buf(), b"hello "); // With trailing space
         assert_eq!(buf.pop_word(), Some(5)); // `hello` is 5 long
-        assert_eq!(buf.get_buf(), b""); // Now empty
+        assert_eq!(buf.get_buf(), b"");
     }
 
     #[test]
@@ -108,8 +114,8 @@ mod test {
     #[test]
     fn peek_char_returns_last_without_removing() {
         let mut buf = CharBuffer::from_vec(vec![b'x', b'y']);
-        assert_eq!(buf.peek_char(), Some(&b'y')); // peek dernier
-        assert_eq!(buf.get_buf(), b"xy"); // pas consommé
+        assert_eq!(buf.peek_char(), Some(&b'y'));
+        assert_eq!(buf.get_buf(), b"xy");
         buf.pop_char();
         assert_eq!(buf.peek_char(), Some(&b'x'));
     }

@@ -1,7 +1,6 @@
 use crate::char_buffer::CharBuffer;
 use crate::errors::ReplayError;
 use crate::session::Session;
-use core::panic;
 use crossterm::terminal;
 use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
@@ -88,14 +87,22 @@ fn handle_user_input<R: Read, W: Write>(
                 pty_stdin.write_all(&buf)?;
                 pty_stdin.flush()?;
                 if record_input {
-                    // Backspace handling
+                    // Char deletion handling (Backspace)
                     if buf[0] == b'\x7F' {
                         char_buffer.pop_char();
                         continue; // Not recording backspace
                     }
 
-                    // Record the command
+                    // Word deletion handling (Ctrl+W)
+                    if buf[0] == b'\x17' {
+                        char_buffer.pop_word();
+                        continue; // Not recording Ctrl-W
+                    }
+
+                    // Char addition handling
                     char_buffer.push_char(buf[0]);
+
+                    // End of line handling
                     if char_buffer.peek_char() == Some(&b'\r') {
                         if let Some(sess) = session.as_mut() {
                             sess.add_command(char_buffer.get_buf().to_vec());
@@ -105,7 +112,7 @@ fn handle_user_input<R: Read, W: Write>(
                 }
             }
             _ => {
-                panic!("Unexpected read size, should be 1 in terminal raw mode !");
+                unreachable!("Unexpected read size, should be 1 in terminal raw mode !");
             }
         }
     }
@@ -177,7 +184,7 @@ mod test {
     #[test]
     #[serial]
     fn record_creates_valid_json_sessions() {
-        let reader1 = RawModeReader::new(b"ls\recho\x7Fo test\rexit\r");
+        let reader1 = RawModeReader::new(b"ls\recho\x7Fo test\x17test\rexit\r");
         run_internal(reader1, Box::new(sink()), true, None).unwrap();
         let file_path = Session::get_session_path("test_session");
         let content = fs::read_to_string(&file_path).unwrap();
