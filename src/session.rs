@@ -1,5 +1,5 @@
 use crate::errors::ReplayError;
-use crate::fs;
+use crate::paths;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -20,7 +20,7 @@ struct SessionIndexFile;
 
 impl SessionIndexFile {
     fn get_path() -> PathBuf {
-        fs::get_sessions_dir().join("session_idx")
+        paths::get_sessions_dir().join("session_idx")
     }
 
     fn open_file() -> Result<std::fs::File, ReplayError> {
@@ -176,7 +176,7 @@ impl Session {
         self.commands.iter()
     }
     pub fn get_session_path(id: &str) -> PathBuf {
-        fs::get_sessions_dir().join(format!("{}.json", id))
+        paths::get_sessions_dir().join(format!("{}.json", id))
     }
 }
 
