@@ -1,6 +1,6 @@
 use crate::char_buffer::CharBuffer;
 use crate::errors::ReplayError;
-use crate::session::Session;
+use crate::session::{Generator, Session};
 use crossterm::terminal;
 use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
@@ -10,11 +10,12 @@ type Reader = Box<dyn Read + Send>;
 type Writer = Box<dyn Write + Send>;
 type ChildProc = Box<dyn Child + Send + Sync>;
 
-pub fn run_internal<R: Read, W: Write + Send + 'static>(
+pub fn run_internal<R: Read, W: Write + Send + 'static, G: Generator>(
     user_input: R,                       // input from user (stdin, pipe…)
     user_output: W,                      // output to user (stdout, file…)
     record_user_input: bool,             // enable recording of typed commands
     session_description: Option<String>, // optional session description
+    generator: G,
 ) -> Result<(), ReplayError> {
     terminal::enable_raw_mode()?;
 
@@ -29,6 +30,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
         record_user_input,
         session_description,
         child,
+        generator,
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
@@ -57,19 +59,19 @@ fn spawn_shell() -> Result<(Reader, Writer, ChildProc), ReplayError> {
     Ok((pty_stdout, pty_stdin, bash_process))
 }
 
-// Precondition: Terminal is in raw mode
-fn handle_user_input<R: Read, W: Write>(
+fn handle_user_input<R: Read, W: Write, G: Generator>(
     mut user_input: R,
     mut pty_stdin: W,
     record_input: bool,
     session_description: Option<String>,
     mut child: ChildProc,
+    generator: G,
 ) -> Result<(), ReplayError> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
     let mut char_buffer = CharBuffer::new();
     let mut session: Option<Session> = if record_input {
-        Some(Session::new(session_description)?)
+        Some(Session::new(session_description, generator)?)
     } else {
         None
     };
@@ -177,6 +179,7 @@ impl std::io::Read for RawModeReader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::session::{MockGenerator, TEST_ID};
     use serial_test::serial;
     use std::fs;
     use std::io::sink;
@@ -184,8 +187,10 @@ mod test {
     #[test]
     #[serial]
     fn record_creates_valid_json_sessions() {
-        let reader1 = RawModeReader::new(b"ls\recho\x7Fo test\x17test\rexit\r");
-        run_internal(reader1, Box::new(sink()), true, None).unwrap();
+        let mut mock = MockGenerator::new();
+        mock.expect_generate_id().return_const(TEST_ID);
+        let reader1 = RawModeReader::new(b"ls\recho test\rexit\r");
+        run_internal(reader1, Box::new(sink()), true, None, mock).unwrap();
         let file_path = Session::get_session_path("test_session");
         let content = fs::read_to_string(&file_path).unwrap();
         let session: Session = serde_json::from_str(&content)

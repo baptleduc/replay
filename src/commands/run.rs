@@ -3,7 +3,7 @@
 use super::RunnableCommand;
 use crate::errors::ReplayError;
 use crate::pty::{RawModeReader, run_internal};
-use crate::session::Session;
+use crate::session::{Session, ShaiGenerator};
 use clap::Args;
 use std::io::stdout;
 
@@ -29,7 +29,7 @@ impl RunnableCommand for RunCommand {
         let commands: String = session.iter_commands().map(|s| s.as_str()).collect();
         let input = RawModeReader::new(commands.as_bytes());
         let output = stdout();
-        run_internal(input, output, false, None)?;
+        run_internal(input, output, false, None, ShaiGenerator)?;
         Ok(())
     }
 }

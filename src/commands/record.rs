@@ -4,6 +4,7 @@ use super::RunnableCommand;
 use crate::args::validate_session_description;
 use crate::errors::ReplayError;
 use crate::pty::run_internal;
+use crate::session::ShaiGenerator;
 use clap::Args;
 
 #[derive(Args, PartialEq, Eq, Debug)]
@@ -16,7 +17,13 @@ impl RunnableCommand for RecordCommand {
     fn run(&self) -> Result<(), ReplayError> {
         let reader = stdin();
         let writer = stdout();
-        run_internal(reader, writer, true, self.session_description.clone())
+        run_internal(
+            reader,
+            writer,
+            true,
+            self.session_description.clone(),
+            ShaiGenerator,
+        )
     }
 }
 

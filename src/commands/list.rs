@@ -63,7 +63,7 @@ impl ListCommand {
         } else {
             let first_commands_stylized = metadata.first_commands.join(" | ");
             let list_message = format!(
-                "{}, commands:  {} \x1b[0m",
+                "{}, commands: {}",
                 Self::adapt_date_metadata(metadata.timestamp),
                 first_commands_stylized,
             );
@@ -89,21 +89,23 @@ impl ListCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::ShaiGenerator;
     use serial_test::serial;
 
     #[test]
     #[serial]
     fn test_list_format() {
         crate::session::tests::setup();
-        let mut session_1 = Session::new(None).unwrap();
+        let mut session_1 = Session::new(None, ShaiGenerator).unwrap();
         session_1.add_command("ls".into());
         session_1.add_command("echo test".into());
         session_1.save_session().unwrap();
-        let session_2 = Session::new(Some("test session 2".into())).unwrap();
+        let session_2 = Session::new(Some("test session 2".into()), ShaiGenerator).unwrap();
         session_2.save_session().unwrap();
-        let session_3 = Session::new(Some(
-            "session message is too long and should be truncated".into(),
-        ))
+        let session_3 = Session::new(
+            Some("session message is too long and should be truncated".into()),
+            ShaiGenerator,
+        )
         .unwrap();
         session_3.save_session().unwrap();
         let list_output = ListCommand::list().unwrap();

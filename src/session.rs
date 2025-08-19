@@ -1,12 +1,13 @@
 use crate::errors::ReplayError;
 use crate::paths;
 use chrono::Utc;
+use mockall::*;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
-#[cfg(not(test))]
+// #[cfg(not(test))]
 use sha2::{Digest, Sha256};
 
 #[derive(Default, Serialize, Deserialize)]
@@ -130,21 +131,21 @@ impl SessionIndexFile {
 #[cfg(test)]
 pub const TEST_ID: &str = "test_session";
 
-impl Session {
-    pub fn new(description: Option<String>) -> Result<Self, ReplayError> {
-        let user = whoami::username();
-        let timestamp = Utc::now();
-        Ok(Self {
-            commands: Vec::new(),
-            id: Self::generate_id(&description, &timestamp, &user),
-            description,
-            timestamp,
-            user,
-        })
-    }
-
-    #[cfg(not(test))]
+#[automock]
+pub trait Generator {
     fn generate_id(
+        &self,
+        description: &Option<String>,
+        timestamp: &chrono::DateTime<Utc>,
+        user: &str,
+    ) -> String;
+}
+
+pub struct ShaiGenerator;
+
+impl Generator for ShaiGenerator {
+    fn generate_id(
+        &self,
         description: &Option<String>,
         timestamp: &chrono::DateTime<Utc>,
         user: &str,
@@ -159,14 +160,21 @@ impl Session {
 
         format!("{:x}", hasher.finalize())
     }
-
-    #[cfg(test)]
-    fn generate_id(
-        _description: &Option<String>,
-        _timestamp: &chrono::DateTime<Utc>,
-        _user: &str,
-    ) -> String {
-        TEST_ID.to_string()
+}
+impl Session {
+    pub fn new<G: Generator>(
+        description: Option<String>,
+        generator: G,
+    ) -> Result<Self, ReplayError> {
+        let user = whoami::username();
+        let timestamp = Utc::now();
+        Ok(Self {
+            commands: Vec::new(),
+            id: generator.generate_id(&description, &timestamp, &user),
+            description: description.clone(),
+            timestamp,
+            user: user.clone(),
+        })
     }
 
     pub fn add_command(&mut self, cmd_raw: Vec<u8>) {
@@ -222,7 +230,9 @@ pub mod tests {
     #[serial]
     fn test_session_creation() {
         setup();
-        let session = Session::new(Some("test session".into())).unwrap();
+        let mut mock = MockGenerator::new();
+        mock.expect_generate_id().return_const(TEST_ID);
+        let session = Session::new(Some("test session".into()), mock).unwrap();
         assert_eq!(session.description, Some("test session".into()));
         assert_eq!(session.id, TEST_ID);
     }
@@ -231,7 +241,7 @@ pub mod tests {
     #[serial]
     fn test_session_saving() {
         setup();
-        let session = Session::new(Some("test session".into())).unwrap();
+        let session = Session::new(Some("test session".into()), ShaiGenerator).unwrap();
         session.save_session().unwrap();
         assert!(std::path::Path::new(&Session::get_session_path(&session.id)).exists());
     }
@@ -240,11 +250,11 @@ pub mod tests {
     #[serial]
     fn test_session_index_file() {
         setup();
-        let session_1 = Session::new(Some("test session 1".into())).unwrap();
+        let session_1 = Session::new(Some("test session 1".into()), ShaiGenerator).unwrap();
         session_1.save_session().unwrap();
         assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_1.id);
 
-        let session_2 = Session::new(Some("test session 2".into())).unwrap();
+        let session_2 = Session::new(Some("test session 2".into()), ShaiGenerator).unwrap();
         session_2.save_session().unwrap();
         assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_2.id);
         assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_2.id);
