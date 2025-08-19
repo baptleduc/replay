@@ -177,7 +177,7 @@ mod test {
     #[test]
     #[serial]
     fn record_creates_valid_json_sessions() {
-        let reader1 = RawModeReader::new(b"ls\recho test\rexit\r");
+        let reader1 = RawModeReader::new(b"ls\recho\x7Fo test\rexit\r");
         run_internal(reader1, Box::new(sink()), true, None).unwrap();
         let file_path = Session::get_session_path("test_session");
         let content = fs::read_to_string(&file_path).unwrap();
