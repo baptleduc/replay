@@ -1,5 +1,7 @@
+use crate::char_buffer::CharBuffer;
 use crate::errors::ReplayError;
 use crate::session::Session;
+use core::panic;
 use crossterm::terminal;
 use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
@@ -56,16 +58,17 @@ fn spawn_shell() -> Result<(Reader, Writer, ChildProc), ReplayError> {
     Ok((pty_stdout, pty_stdin, bash_process))
 }
 
+// Precondition: Terminal is in raw mode
 fn handle_user_input<R: Read, W: Write>(
     mut user_input: R,
-    mut user_output: W,
+    mut pty_stdin: W,
     record_input: bool,
     session_description: Option<String>,
     mut child: ChildProc,
 ) -> Result<(), ReplayError> {
     // Main thread sends user input to bash stdin
-    let mut buf = [0u8; 1024];
-    let mut cmd_raw: Vec<u8> = Vec::new();
+    let mut buf = [0u8; 1]; // We only read one byte in raw mode
+    let mut char_buffer = CharBuffer::new();
     let mut session: Option<Session> = if record_input {
         Some(Session::new(session_description)?)
     } else {
@@ -77,20 +80,32 @@ fn handle_user_input<R: Read, W: Write>(
             // Check if the child process has exited
             break;
         }
+
         match user_input.read(&mut buf)? {
-            0 => break,
-            n => {
-                user_output.write_all(&buf)?;
-                user_output.flush()?;
+            0 => break, // EOF
+            1 => {
+                // Send to PTY
+                pty_stdin.write_all(&buf)?;
+                pty_stdin.flush()?;
                 if record_input {
-                    cmd_raw.extend_from_slice(&buf[..n]);
-                    if cmd_raw.ends_with(b"\r") {
+                    // Backspace handling
+                    if buf[0] == b'\x7F' {
+                        char_buffer.pop_char();
+                        continue; // Not recording backspace
+                    }
+
+                    // Record the command
+                    char_buffer.push_char(buf[0]);
+                    if char_buffer.peek_char() == Some(&b'\r') {
                         if let Some(sess) = session.as_mut() {
-                            sess.add_command(cmd_raw.clone());
+                            sess.add_command(char_buffer.get_buf().to_vec());
                         }
-                        cmd_raw.clear();
+                        char_buffer.clear();
                     }
                 }
+            }
+            _ => {
+                panic!("Unexpected read size, should be 1 in terminal raw mode !");
             }
         }
     }

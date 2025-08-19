@@ -13,6 +13,7 @@
 //! - [`errors`] Defines custom error types for the library.
 
 pub mod args;
+pub mod char_buffer;
 pub mod commands;
 pub mod errors;
 pub mod paths;
