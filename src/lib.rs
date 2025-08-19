@@ -15,6 +15,7 @@
 pub mod args;
 pub mod commands;
 pub mod errors;
+pub mod paths;
 pub mod pty;
 pub mod session;
 
