@@ -20,7 +20,7 @@ struct SessionIndexFile;
 
 impl SessionIndexFile {
     fn get_path() -> PathBuf {
-        paths::get_sessions_dir().join("session_idx")
+        paths::get_replay_dir().join("session_idx")
     }
 
     fn open_file() -> Result<std::fs::File, ReplayError> {
