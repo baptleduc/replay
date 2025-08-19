@@ -21,6 +21,9 @@ pub enum ReplayError {
     #[error("Thread panicked: {0}")]
     ThreadPanic(String),
 
+    #[error("Invalid Session Name: {0}")]
+    InvalidSessionName(String),
+
     #[error("Unknown replay error")]
     Unknown,
 }
