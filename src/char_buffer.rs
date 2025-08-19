@@ -26,15 +26,26 @@ impl CharBuffer {
 
     /// Return the length of the popped word
     pub fn pop_word(&mut self) -> Option<usize> {
-        let buf_len = self.buf.len();
-        for i in (0..buf_len).rev() {
-            if self.buf[i] == b' ' {
-                self.buf.truncate(i);
-                return Some(buf_len - i);
-            }
+        // Remove trailing spaces
+        while Self::peek_char(&self) == Some(&b' ') {
+            self.pop_char();
         }
 
-        None
+        let buf_len = self.buf.len();
+        if buf_len == 0 {
+            return None; // No word to pop
+        }
+
+        for i in (0..buf_len).rev() {
+            if self.buf[i] == b' ' {
+                let word_start = i + 1;
+                self.buf.truncate(i + 1);
+                return Some(buf_len - word_start);
+            }
+        }
+        // If no space was found, truncate the buffer to 0
+        self.buf.truncate(0);
+        Some(buf_len)
     }
 
     pub fn peek_char(&self) -> Option<&u8> {
@@ -63,12 +74,12 @@ mod test {
     #[test]
     fn pop_word_truncates_at_last_space() {
         let mut buf = CharBuffer::from_vec(b"hello world test".to_vec());
-        assert_eq!(buf.pop_word(), Some(5)); // supprime " test"
-        assert_eq!(buf.get_buf(), b"hello world");
-        assert_eq!(buf.pop_word(), Some(6)); // supprime " world"
-        assert_eq!(buf.get_buf(), b"hello");
-        assert_eq!(buf.pop_word(), None); // pas d'espace restant
-        assert_eq!(buf.get_buf(), b"hello");
+        assert_eq!(buf.pop_word(), Some(4)); // `test` is 4 long
+        assert_eq!(buf.get_buf(), b"hello world "); // With trailing space
+        assert_eq!(buf.pop_word(), Some(5)); // `world` is 5 long
+        assert_eq!(buf.get_buf(), b"hello "); // With trailing space
+        assert_eq!(buf.pop_word(), Some(5)); // `hello` is 5 long
+        assert_eq!(buf.get_buf(), b""); // Now empty
     }
 
     #[test]
