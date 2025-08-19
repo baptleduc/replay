@@ -2,23 +2,21 @@
 
 Thanks for wanting to contribute!
 
-This document explains how to propose changes (bug fixes, new features, documentation, tests) in a way that speeds up review and increases the chance of acceptance.
+This document explains how to propose changes (bug fixes, new features, documentation, tests) in a way that improve code quality.
 
 
 ## Before you start
 
 1. Read the `README.md` and any project documentation.
-2. Search existing issues and pull requests — your bug or idea may already be discussed.
+2. Search existing issues and pull requests, your bug or idea may already be discussed.
 3. For large changes (major features, big refactors) open an issue or discussion first to agree on the approach.
-
-> If this project requires a Contributor License Agreement (CLA) or Developer Certificate of Origin (DCO), it will be documented in the repository. Follow the shown procedure if applicable.
 
 
 ## Bug reports and feature requests
 
 Both bug reports and feature request, big or small, are welcome.
 
-Before submitting a feature request, please check if an open issue already exists. If this is not the case, submit a feature request. Describe your use case, why you need this feature and why this feature is important for replay.
+Before submitting a feature request, please check if an open issue already exists. If this is not the case, submit a feature request. Describe your use case, why you need this feature and why this feature is important for `replay`.
 
 Before filing a bug report, please check if an open issue already exists. If this is not the case, submit a new bug report. If you're not sure if something is a bug or not, feel free to file a bug report anyway.
 
@@ -28,7 +26,7 @@ Before filing a bug report, please check if an open issue already exists. If thi
 GitHub Pull Requests (PRs) are the main way to contribute. We use the **fork-and-pull model**: you push changes to your personal fork, then open a PR into this repository.
 
 ### Before opening a PR
-- Search existing and closed PRs — maybe someone already worked on the same idea. If so, you can help by reviewing, testing, or reviving it.
+- Search existing and closed PRs maybe someone already worked on the same idea. If so, you can help by reviewing, testing, or reviving it.
 - Keep PRs focused: smaller PRs are easier to review and get merged faster. If your contribution spans multiple concerns, split it into several PRs.
 
 ### How to open a PR
@@ -109,7 +107,7 @@ Examples:
 * `docs: improve README examples`
 
 
-### Commit hygiene after review
+### Commit management after review
 
 When addressing review feedback, please use **fixup commits** instead of rewriting history yourself:
 
@@ -119,7 +117,19 @@ git commit --fixup=<commit-hash>
 
 Otherwise the history of review changes is lost and for large PRs, it makes it difficult for the reviewer to follow them. It might also happen that you introduce regression and won't be able to recover them from previous commits.
 
+Once reviewers approve your changes, follow these steps:
 
+```sh
+git fetch origin
+git rebase -i --autosquash origin/main
+```
+
+Then push your branch with:
+```sh
+git push --force-with-lease
+```
+
+Finally, use a **squash merge** in github to cleanly integrate your commits.
 ## Tests & quality
 Replay has a test suite that you can run with `cargo test`. Ideally, we'd like pull requests to include tests where they make sense. For example, when fixing a bug, add a test that would have failed without the fix.
 
@@ -140,17 +150,10 @@ Please ensure checks (format, lints, tests, docs) pass locally before opening a 
 
 Contributions to docs and examples are highly appreciated:
 
-* Update `README.md` for UX changes.
+* Update README.md for changes that affect the user experience (UX).
 * Add examples under `examples/` when appropriate.
 
 Rustdoc comments (///) are strongly encouraged for public APIs.
-
-## Communication
-
-* Use **issues** to report bugs and propose features.
-* Use **pull requests** to submit fixes and improvements.
-* For long-running or broad discussions, prefer GitHub Discussions if enabled.
-
 
 
 ## Thank you
