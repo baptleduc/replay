@@ -2,7 +2,7 @@ use crate::errors::ReplayError;
 use crate::paths;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 #[cfg(not(test))]
@@ -37,67 +37,96 @@ impl SessionIndexFile {
         Ok(())
     }
 
-    fn get_last_line_offset() -> Result<u64, ReplayError> {
+    /// Read the file by the end and give the byte offset of the nth line
+    fn get_nth_line_offset(n: u32) -> Result<u64, ReplayError> {
         let mut file = Self::open_file()?;
-        let mut pos = file.seek(SeekFrom::End(0))?;
-
+        let mut offset = file.seek(SeekFrom::End(0))?;
         let mut buf = [0u8; 1];
-        let mut newlines_found = 0;
-        let mut last_line_offset = 0;
+        let mut newlines_count = 0;
+        let mut target_offset: u64 = 0;
 
-        // Read the file in reverse to find the last two newlines
-        while pos > 0 {
-            pos -= 1;
-            file.seek(SeekFrom::Start(pos))?;
+        while offset > 0 {
+            offset -= 1;
+            file.seek(SeekFrom::Start(offset))?;
             file.read_exact(&mut buf)?;
             if buf[0] == b'\n' {
-                newlines_found += 1;
-                if newlines_found == 2 {
-                    last_line_offset = pos + 1; // start of the last line
+                newlines_count += 1;
+                if newlines_count == n + 2 {
+                    target_offset = offset + 1;
                     break;
                 }
             }
         }
 
-        if newlines_found == 1 {
+        if newlines_count == 1 {
             return Ok(0);
         }
 
-        if newlines_found == 0 {
+        if newlines_count == 0 {
             return Err(ReplayError::SessionError(String::from(
                 "No replay entries found",
             )));
         }
 
-        Ok(last_line_offset)
+        Ok(target_offset)
     }
 
-    /// Read the line starting at a given byte offset
+    /// Read the line starting at a given byte position
     #[allow(dead_code)] // TODO: Remove this when the function will be used
     fn read_line_at(offset: u64) -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
         file.seek(SeekFrom::Start(offset))?;
+        // We use a BufReader for the `read_until()` func
+        let mut reader = BufReader::new(file);
+        let mut buf = Vec::new();
+        // We read until a \n instead of reading the entire file
+        reader.read_until(b'\n', &mut buf)?;
+        let line = String::from_utf8_lossy(&buf)
+            .trim_end_matches('\n')
+            .to_string();
+        Ok(line)
+    }
 
-        let mut buf = String::new();
-        file.read_to_string(&mut buf)?;
-        Ok(buf.trim_end_matches('\n').to_string())
+    /// Get the nth session id and remove it from the file
+    #[allow(dead_code)] // TODO: Remove this when the function will be used
+    pub fn remove_session_id(n: u32) -> Result<String, ReplayError> {
+        let mut file = Self::open_file()?;
+        let line_start_offset = Self::get_nth_line_offset(n)?;
+
+        let session_id = Self::read_line_at(line_start_offset)?;
+
+        // Calculate the position of next line
+        let next_line_offset = line_start_offset + session_id.len() as u64 + 1;
+
+        // Read the end of the file after this line
+        let mut rest = Vec::new();
+        file.seek(SeekFrom::Start(next_line_offset))?;
+        file.read_to_end(&mut rest)?;
+
+        // Truncate and rewrite the rest
+        file.set_len(line_start_offset)?;
+        file.seek(SeekFrom::Start(line_start_offset))?;
+        file.write_all(&rest)?;
+        file.flush()?;
+
+        Ok(session_id)
     }
 
     /// Get the last session id without modifying the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn peek_session_id() -> Result<String, ReplayError> {
-        let offset = Self::get_last_line_offset()?;
-        Self::read_line_at(offset)
+        let line_offset = Self::get_nth_line_offset(0)?;
+        Self::read_line_at(line_offset)
     }
 
     /// Get the last session id and remove it from the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn pop_session_id() -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
-        let offset = Self::get_last_line_offset()?;
-        let session_id = Self::read_line_at(offset)?;
+        let line_offset = Self::get_nth_line_offset(0)?;
+        let session_id = Self::read_line_at(line_offset)?;
 
-        file.set_len(offset)?; // truncate at the start of last line
+        file.set_len(line_offset)?; // truncate at the start of last line
         file.flush()?;
 
         Ok(session_id)
@@ -164,9 +193,17 @@ impl Session {
         todo!("load last session");
     }
 
-    pub fn save_session(&self) -> Result<(), ReplayError> {
-        let json = serde_json::to_string_pretty(&self)?;
-        std::fs::write(Self::get_session_path(&self.id), json)?;
+    pub fn save_session(&self, compress: bool) -> Result<(), ReplayError> {
+        if compress {
+            let file = std::fs::File::create(Self::get_session_path(&self.id, "zst"))?;
+            let mut encoder = zstd::Encoder::new(file, 3)?;
+            serde_json::to_writer_pretty(&mut encoder, &self)?;
+            encoder.finish()?;
+        } else {
+            let json = serde_json::to_string_pretty(&self)?;
+            std::fs::write(Self::get_session_path(&self.id, "json"), json)?;
+        }
+
         SessionIndexFile::push_session(&self.id)?;
         Ok(())
     }
