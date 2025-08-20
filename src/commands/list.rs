@@ -1,10 +1,9 @@
 use super::RunnableCommand;
 use crate::errors::ReplayError;
 use crate::session::MetaData;
-use crate::session::{Session, SessionIndexFile};
+use crate::session::Session;
 use chrono::Utc;
 use clap::Args;
-use std::io::{BufRead, BufReader};
 
 #[derive(Args, PartialEq, Eq, Debug)]
 pub struct ListCommand {}
@@ -13,6 +12,7 @@ impl RunnableCommand for ListCommand {
     fn run(&self) -> Result<(), ReplayError> {
         let list_lines = Self::list()?;
         for line in list_lines {
+            let line = line?;
             println!("{}", line);
         }
         Ok(())
@@ -20,28 +20,17 @@ impl RunnableCommand for ListCommand {
 }
 
 impl ListCommand {
-    pub fn list() -> Result<Vec<String>, ReplayError> {
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .open(SessionIndexFile::get_path())?;
-        let reader = BufReader::new(file);
-        let lines: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
-
-        let result: Vec<String> = lines
-            .into_iter()
-            .rev()
-            .enumerate()
-            .map(|(i, line)| -> Result<String, ReplayError> {
-                let session_metadata = Session::load_metadata(&line)?;
-                Ok(format!(
-                    "replay@{{{}}} {}",
-                    i,
-                    Self::display_metadata(session_metadata)
-                ))
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(result)
+    pub fn list() -> Result<impl Iterator<Item = Result<String, ReplayError>>, ReplayError> {
+        let iter = Session::iter_session_ids_rev()?;
+        Ok(iter.enumerate().map(|(i, line_res)| {
+            let line = line_res?;
+            let session_metadata = Session::load_metadata(&line)?;
+            Ok(format!(
+                "replay@{{{}}}: {}",
+                i,
+                Self::display_metadata(session_metadata)
+            ))
+        }))
     }
     fn truncate_description(line: &str, max_len: usize) -> String {
         let truncated: String = line.chars().take(max_len).collect();
@@ -107,24 +96,27 @@ mod tests {
         ))
         .unwrap();
         session_3.save_session(true).unwrap();
-        let list_output = ListCommand::list().unwrap();
+        let list_output: Vec<_> = ListCommand::list()
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(
             format!(
-                "replay@{{0}} {}, message: session message is too lon...",
+                "replay@{{0}}: {}, message: session message is too lon...",
                 ListCommand::adapt_date_metadata(session_3.timestamp),
             ),
             list_output[0]
         );
         assert_eq!(
             format!(
-                "replay@{{1}} {}, message: test session 2",
+                "replay@{{1}}: {}, message: test session 2",
                 ListCommand::adapt_date_metadata(session_2.timestamp)
             ),
             list_output[1]
         );
         assert_eq!(
             format!(
-                "replay@{{2}} {}, commands: ls | echo test",
+                "replay@{{2}}: {}, commands: ls | echo test",
                 ListCommand::adapt_date_metadata(session_1.timestamp)
             ),
             list_output[2]

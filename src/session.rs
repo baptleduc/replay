@@ -1,6 +1,7 @@
 use crate::errors::ReplayError;
 use crate::paths;
 use chrono::Utc;
+use rev_lines::RevLines;
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use std::fs::File;
@@ -13,12 +14,9 @@ const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
 pub struct Session {
     pub description: Option<String>,
     pub id: String,
-    #[cfg(test)]
     pub timestamp: chrono::DateTime<Utc>,
-    #[cfg(not(test))]
-    timestamp: chrono::DateTime<Utc>,
-    user: String,
-    commands: Vec<String>,
+    pub user: String,
+    pub commands: Vec<String>,
 }
 #[derive(Deserialize, Debug)]
 pub struct MetaData {
@@ -39,10 +37,10 @@ where
         .map(|cmd| cmd.replace("\r", ""))
         .collect())
 }
-pub struct SessionIndexFile;
+struct SessionIndexFile;
 
 impl SessionIndexFile {
-    pub fn get_path() -> PathBuf {
+    fn get_path() -> PathBuf {
         paths::get_replay_dir().join("session_idx")
     }
 
@@ -201,7 +199,7 @@ impl Session {
     fn load_from_files<T: DeserializeOwned>(session_id: &str) -> Result<T, ReplayError> {
         // Try compressed .zst first
         let zst_path = Session::get_session_path(session_id, "zst");
-        if zst_path.exists() {
+        if zst_path.try_exists()? {
             let file = File::open(zst_path)?;
             let decoder = zstd::Decoder::new(file)?;
             let data = serde_json::from_reader(decoder)?;
@@ -250,6 +248,13 @@ impl Session {
     }
     pub fn get_session_path(id: &str, extension: &str) -> PathBuf {
         paths::get_sessions_dir().join(format!("{}.{}", id, extension))
+    }
+
+    pub fn iter_session_ids_rev()
+    -> Result<impl Iterator<Item = Result<String, ReplayError>>, ReplayError> {
+        let file = File::open(SessionIndexFile::get_path())?;
+        let rev_lines = RevLines::new(file);
+        Ok(rev_lines.map(|line_res| line_res.map_err(ReplayError::from)))
     }
 }
 
