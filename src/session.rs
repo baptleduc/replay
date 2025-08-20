@@ -212,8 +212,8 @@ impl Session {
         // We use impl Iterator to not have to declare RecordedCommand public
         self.commands.iter()
     }
-    pub fn get_session_path(id: &str) -> PathBuf {
-        paths::get_sessions_dir().join(format!("{}.json", id))
+    pub fn get_session_path(id: &str, extension: &str) -> PathBuf {
+        paths::get_sessions_dir().join(format!("{}.{}", id, extension))
     }
 }
 
@@ -240,8 +240,14 @@ mod tests {
     fn test_session_saving() {
         setup();
         let session = Session::new(Some("test session".into())).unwrap();
-        session.save_session().unwrap();
-        assert!(std::path::Path::new(&Session::get_session_path(&session.id)).exists());
+
+        // Non-compressed saving
+        session.save_session(false).unwrap();
+        assert!(std::path::Path::new(&Session::get_session_path(&session.id, "json")).exists());
+
+        // Compressed saving
+        session.save_session(true).unwrap();
+        assert!(std::path::Path::new(&Session::get_session_path(&session.id, "zst")).exists());
     }
 
     #[test]
@@ -249,11 +255,11 @@ mod tests {
     fn test_session_index_file() {
         setup();
         let session_1 = Session::new(Some("test session 1".into())).unwrap();
-        session_1.save_session().unwrap();
+        session_1.save_session(true).unwrap();
         assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_1.id);
 
         let session_2 = Session::new(Some("test session 2".into())).unwrap();
-        session_2.save_session().unwrap();
+        session_2.save_session(true).unwrap();
         assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_2.id);
         assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_2.id);
         assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_1.id);
