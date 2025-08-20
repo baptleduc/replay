@@ -28,8 +28,8 @@ pub struct RunCommand {
 
 impl RunnableCommand for RunCommand {
     fn run(&self) -> Result<(), ReplayError> {
-        let session: Session = match &self.session_index {
-            Some(index) => Session::load_session_by_index(*index)?,
+        let session: Session = match self.session_index {
+            Some(index) => Session::load_session_by_index(index)?,
             None => Session::load_last_session()?,
         };
         let commands: String = session.iter_commands().map(|s| s.as_str()).collect();
