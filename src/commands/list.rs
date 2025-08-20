@@ -63,7 +63,7 @@ impl ListCommand {
         } else {
             let first_commands_stylized = metadata.first_commands.join(" | ");
             let list_message = format!(
-                "{}, commands:  {} \x1b[0m",
+                "{}, commands: {}",
                 Self::adapt_date_metadata(metadata.timestamp),
                 first_commands_stylized,
             );
@@ -89,8 +89,8 @@ impl ListCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
     use crate::session::tests::setup;
+    use serial_test::serial;
 
     #[test]
     #[serial]

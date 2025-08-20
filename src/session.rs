@@ -4,7 +4,7 @@ use chrono::Utc;
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write, BufReader, BufRead};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
