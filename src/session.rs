@@ -102,7 +102,7 @@ impl SessionIndexFile {
 
         let session_id = Self::read_line_at(start_offset)?;
 
-        // Calculate the offset off the rest of the file
+        // Calculate the offset of the rest of the file
         let next_offset = start_offset + session_id.len() as u64 + 1;
 
         // Read the end of the file after this line
@@ -195,7 +195,8 @@ impl Session {
         let replay_index = Self::get_replay_index(session_name)?;
         let id = SessionIndexFile::get_nth_session_id(replay_index)?;
         let session_file = File::open(Self::get_session_path(&id))?;
-        let loaded_session: Session = serde_json::from_reader(session_file)?;
+        let reader = BufReader::new(session_file);
+        let loaded_session: Session = serde_json::from_reader(reader)?;
         Ok(loaded_session)
     }
 
