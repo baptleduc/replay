@@ -67,10 +67,29 @@ mod tests {
             String::from("record"),
             String::from("\"test_valid_record_command\""),
         ];
-        let expected_command = CliCommand::Record(record::RecordCommand::new(Some(String::from(
-            "\"test_valid_record_command\"",
-        ))));
-        assert_eq!(expected_command, parse_command(&args).unwrap())
+        let parsed_command = parse_command(&args).unwrap();
+        if let CliCommand::Record(record_cmd) = parsed_command {
+            assert_eq!(
+                record_cmd.session_description(),
+                &Some(String::from("\"test_valid_record_command\""))
+            );
+        } else {
+            panic!("Expected Record command, got something else");
+        }
+    }
+
+    #[test]
+    fn test_valid_record_command_no_description() {
+        let args = [
+            String::from("replay"),
+            String::from("record"),
+        ];
+        let parsed_command = parse_command(&args).unwrap();
+        if let CliCommand::Record(record_cmd) = parsed_command {
+            assert_eq!(record_cmd.session_description(), &None);
+        } else {
+            panic!("Expected Record command, got something else");
+        }
     }
 
     #[test]

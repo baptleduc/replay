@@ -22,9 +22,7 @@ impl RunnableCommand for RecordCommand {
 
 #[cfg(test)]
 impl RecordCommand {
-    pub fn new(desc: Option<String>) -> Self {
-        RecordCommand {
-            session_description: desc,
-        }
+    pub fn session_description(&self) -> &Option<String> {
+        &self.session_description
     }
 }
