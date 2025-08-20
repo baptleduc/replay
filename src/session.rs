@@ -6,6 +6,8 @@ use sha2::{Digest, Sha256};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
+const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
+
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
     pub description: Option<String>,
@@ -94,6 +96,9 @@ impl SessionIndexFile {
         let session_id = Self::read_line_at(line_start_offset)?;
 
         // Calculate the position of next line
+        // Note: `read_line_at` returns the line without the trailing newline character,
+        // so `session_id.len()` does not include the newline. The actual line in the file
+        // is `session_id.len() + 1` bytes (session ID plus '\n'), so this calculation is correct.
         let next_line_offset = line_start_offset + session_id.len() as u64 + 1;
 
         // Read the end of the file after this line
@@ -200,7 +205,7 @@ impl Session {
     pub fn save_session(&self, compress: bool) -> Result<(), ReplayError> {
         if compress {
             let file = std::fs::File::create(Self::get_session_path(&self.id, "zst"))?;
-            let mut encoder = zstd::Encoder::new(file, 3)?;
+            let mut encoder = zstd::Encoder::new(file, DEFAULT_COMPRESSION_LEVEL)?;
             serde_json::to_writer_pretty(&mut encoder, &self)?;
             encoder.finish()?;
         } else {
