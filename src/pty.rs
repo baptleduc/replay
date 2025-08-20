@@ -118,7 +118,7 @@ fn handle_user_input<R: Read, W: Write>(
     }
 
     if record_input && session.as_mut().is_some() {
-        session.as_mut().unwrap().save_session()?;
+        session.as_mut().unwrap().save_session(true)?; // By default, we compress session files
     }
 
     Ok(())
@@ -178,7 +178,6 @@ impl std::io::Read for RawModeReader {
 mod test {
     use super::*;
     use serial_test::serial;
-    use std::fs;
     use std::io::sink;
 
     #[test]
@@ -186,16 +185,12 @@ mod test {
     fn record_creates_valid_json_sessions() {
         let reader1 = RawModeReader::new(b"ls\recho\x7Fo test\x17test\rexit\r");
         run_internal(reader1, Box::new(sink()), true, None).unwrap();
-        let file_path = Session::get_session_path("test_session");
-        let content = fs::read_to_string(&file_path).unwrap();
-        let session: Session = serde_json::from_str(&content)
-            .expect("The json structure doesn't correspond to the expected session format");
-
+        let session = Session::load_last_session().unwrap();
         let mut command_iter = session.iter_commands();
         assert_eq!(command_iter.next().unwrap(), "ls\r");
         assert_eq!(command_iter.next().unwrap(), "echo test\r");
         assert_eq!(command_iter.next().unwrap(), "exit\r");
         assert!(session.description.is_none());
-        fs::remove_file(file_path).unwrap();
+        // TODO: delete the file by calling a future remove_last_session()
     }
 }
