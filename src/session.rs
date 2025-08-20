@@ -2,11 +2,12 @@ use crate::errors::ReplayError;
 use crate::paths;
 use chrono::Utc;
 use rev_lines::RevLines;
-use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
+use std::process::Command;
 
 const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
 
@@ -15,28 +16,34 @@ pub struct Session {
     pub description: Option<String>,
     pub id: String,
     pub timestamp: chrono::DateTime<Utc>,
-    pub user: String,
-    pub commands: Vec<String>,
+    user: String,
+    #[serde(
+        serialize_with = "first_two_commands_serialize",
+        rename = "first_commands"
+    )]
+    commands: Vec<String>,
 }
+
 #[derive(Deserialize, Debug)]
 pub struct MetaData {
     pub description: Option<String>,
     pub timestamp: chrono::DateTime<Utc>,
-    #[serde(rename = "commands", deserialize_with = "first_two_commands")]
     pub first_commands: Vec<String>,
 }
 
-fn first_two_commands<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+fn first_two_commands_serialize<S>(commands: &Vec<String>, serializer: S) -> Result<S::Ok, S::Error>
 where
-    D: Deserializer<'de>,
+    S: Serializer,
 {
-    let all: Vec<String> = Vec::deserialize(deserializer)?;
-    Ok(all
-        .into_iter()
+    let first_two: Vec<String> = commands
+        .iter()
         .take(2)
         .map(|cmd| cmd.replace("\r", ""))
-        .collect())
+        .collect();
+
+    first_two.serialize(serializer)
 }
+
 struct SessionIndexFile;
 
 impl SessionIndexFile {
@@ -196,7 +203,7 @@ impl Session {
             .push(String::from_utf8_lossy(&cmd_raw).to_string());
     }
 
-    fn load_from_files<T: DeserializeOwned>(session_id: &str) -> Result<T, ReplayError> {
+    pub fn load_metadata(session_id: &str) -> Result<MetaData, ReplayError> {
         // Try compressed .zst first
         let zst_path = Session::get_session_path(session_id, "zst");
         if zst_path.try_exists()? {
@@ -214,32 +221,69 @@ impl Session {
         Ok(data)
     }
 
-    pub fn load_session_by_index(index: u32) -> Result<Self, ReplayError> {
+    pub fn run_session_by_index(index: u32) -> Result<(), ReplayError> {
         let session_id = SessionIndexFile::get_session_id(index)?;
-        Session::load_from_files(&session_id)
+        let session_path = Session::get_session_path(&session_id, "sh");
+        Command::new("/bin/bash")
+            .arg("-c")
+            .arg(format!("\"{}\" &", session_path.to_string_lossy()))
+            .spawn()?;
+
+        Ok(())
     }
 
-    pub fn load_metadata(session_id: &str) -> Result<MetaData, ReplayError> {
-        Session::load_from_files(session_id)
-    }
-
-    pub fn load_last_session() -> Result<Self, ReplayError> {
-        Self::load_session_by_index(0)
+    pub fn run_last_session() -> Result<(), ReplayError> {
+        Self::run_session_by_index(0)
     }
 
     pub fn save_session(&self, compress: bool) -> Result<(), ReplayError> {
-        if compress {
-            let file = std::fs::File::create(Self::get_session_path(&self.id, "zst"))?;
-            let mut encoder = zstd::Encoder::new(file, DEFAULT_COMPRESSION_LEVEL)?;
-            serde_json::to_writer_pretty(&mut encoder, &self)?;
-            encoder.finish()?;
-        } else {
-            let json = serde_json::to_string_pretty(&self)?;
-            std::fs::write(Self::get_session_path(&self.id, "json"), json)?;
-        }
-
+        self.save_json_metadata(compress)?;
+        self.save_sh_file(compress)?;
         SessionIndexFile::push_session(&self.id)?;
         Ok(())
+    }
+
+    fn save_json_metadata(&self, compress: bool) -> Result<(), ReplayError> {
+        let path = if compress {
+            Self::get_session_path(&self.id, "zst")
+        } else {
+            Self::get_session_path(&self.id, "json")
+        };
+
+        let file = File::create(path)?;
+        let writer = Self::maybe_compressed_writer(file, compress)?;
+        serde_json::to_writer_pretty(writer, &self)?;
+        Ok(())
+    }
+
+    fn save_sh_file(&self, compress: bool) -> Result<(), ReplayError> {
+        let commands = self
+            .iter_commands()
+            .map(|cmd| cmd.replace("\r", "\n"))
+            .collect::<String>();
+
+        let script_content = format!("#!/bin/sh\n{}", commands);
+
+        let path = if compress {
+            Self::get_session_path(&self.id, "sh.zst")
+        } else {
+            Self::get_session_path(&self.id, "sh")
+        };
+
+        let file = std::fs::File::create(path)?;
+        let mut writer = Self::maybe_compressed_writer(file, compress)?;
+
+        writer.write_all(script_content.as_bytes())?;
+        Ok(())
+    }
+
+    fn maybe_compressed_writer(file: File, compress: bool) -> Result<Box<dyn Write>, ReplayError> {
+        if compress {
+            let encoder = zstd::Encoder::new(file, DEFAULT_COMPRESSION_LEVEL)?;
+            Ok(Box::new(encoder))
+        } else {
+            Ok(Box::new(BufWriter::new(file)))
+        }
     }
 
     pub fn iter_commands(&self) -> impl Iterator<Item = &String> + '_ {

@@ -2,10 +2,8 @@
 
 use super::RunnableCommand;
 use crate::errors::ReplayError;
-use crate::pty::{RawModeReader, run_internal};
 use crate::session::Session;
 use clap::Args;
-use std::io::stdout;
 
 /// CLI command to run a recorded session.
 #[derive(Args, PartialEq, Eq, Debug)]
@@ -28,14 +26,10 @@ pub struct RunCommand {
 
 impl RunnableCommand for RunCommand {
     fn run(&self) -> Result<(), ReplayError> {
-        let session: Session = match &self.session_index {
-            Some(index) => Session::load_session_by_index(*index)?,
-            None => Session::load_last_session()?,
-        };
-        let commands: String = session.iter_commands().map(|s| s.as_str()).collect();
-        let input = RawModeReader::new(commands.as_bytes());
-        let output = stdout();
-        run_internal(input, output, false, None)?;
+        match &self.session_index {
+            Some(index) => Session::run_session_by_index(*index)?,
+            None => Session::run_last_session()?,
+        }
         Ok(())
     }
 }
