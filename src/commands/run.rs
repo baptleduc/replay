@@ -28,8 +28,8 @@ pub struct RunCommand {
 
 impl RunnableCommand for RunCommand {
     fn run(&self) -> Result<(), ReplayError> {
-        let session: Session = match self.session_index {
-            Some(index) => Session::load_session_by_index(index)?,
+        let session: Session = match &self.session_index {
+            Some(index) => Session::load_session_by_index(*index)?,
             None => Session::load_last_session()?,
         };
         let commands: String = session.iter_commands().map(|s| s.as_str()).collect();
@@ -41,6 +41,15 @@ impl RunnableCommand for RunCommand {
 }
 
 impl RunCommand {
+    #[cfg(test)]
+    pub fn new(session_index: Option<u32>, show: bool, delay: u64) -> Self {
+        Self {
+            session_index,
+            show,
+            delay,
+        }
+    }
+
     fn parse_session_index(s: &str) -> Result<u32, String> {
         s.strip_prefix("replay@{")
             .and_then(|rest| rest.strip_suffix('}'))
@@ -52,23 +61,5 @@ impl RunCommand {
             })?
             .parse::<u32>()
             .map_err(|_| format!("Invalid session index in '{}'", s))
-    }
-
-    #[cfg(test)]
-    /// Get Read-Only Access to the Session Index
-    pub fn get_session_index(&self) -> Option<&u32> {
-        self.session_index.as_ref()
-    }
-
-    #[cfg(test)]
-    /// Get Read-Only Access to show
-    pub fn get_show(&self) -> bool {
-        self.show
-    }
-
-    #[cfg(test)]
-    /// Get Read-Only Access to delay
-    pub fn get_delay(&self) -> u64 {
-        self.delay
     }
 }
