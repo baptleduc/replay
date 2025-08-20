@@ -1,12 +1,10 @@
 use crate::errors::ReplayError;
-use crate::{paths, session};
+use crate::paths;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-
-#[cfg(not(test))]
-use sha2::{Digest, Sha256};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
@@ -138,9 +136,6 @@ impl SessionIndexFile {
     }
 }
 
-#[cfg(test)]
-pub const TEST_ID: &str = "test_session";
-
 impl Session {
     pub fn new(description: Option<String>) -> Result<Self, ReplayError> {
         let user = whoami::username();
@@ -154,7 +149,6 @@ impl Session {
         })
     }
 
-    #[cfg(not(test))]
     fn generate_id(
         description: &Option<String>,
         timestamp: &chrono::DateTime<Utc>,
@@ -169,15 +163,6 @@ impl Session {
         hasher.update(timestamp.to_rfc3339().as_bytes());
 
         format!("{:x}", hasher.finalize())
-    }
-
-    #[cfg(test)]
-    fn generate_id(
-        _description: &Option<String>,
-        _timestamp: &chrono::DateTime<Utc>,
-        _user: &str,
-    ) -> String {
-        TEST_ID.to_string()
     }
 
     pub fn add_command(&mut self, cmd_raw: Vec<u8>) {
@@ -251,7 +236,6 @@ mod tests {
         setup();
         let session = Session::new(Some("test session".into())).unwrap();
         assert_eq!(session.description, Some("test session".into()));
-        assert_eq!(session.id, TEST_ID);
     }
 
     #[test]

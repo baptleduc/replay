@@ -89,7 +89,7 @@ mod tests {
         let parsed_cmd = parse_command(&args).unwrap();
         if let CliCommand::Run(run_cmd) = parsed_cmd {
             assert_eq!(run_cmd.get_session_index(), Some(&0));
-            assert_eq!(run_cmd.get_show(), true);
+            assert!(run_cmd.get_show());
             assert_eq!(run_cmd.get_delay(), 1);
         } else {
             panic!("Expected RunCommand");
