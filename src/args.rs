@@ -41,6 +41,7 @@ pub fn parse_command(args: &[String]) -> Result<CliCommand, ReplayError> {
     }
 }
 
+// TODO: move in RecordCommand
 pub fn validate_session_description(s: &str) -> Result<String, ReplayError> {
     if s.len() > 30 {
         return Err(ReplayError::SessionError(String::from(
@@ -67,6 +68,7 @@ mod tests {
             String::from("record"),
             String::from("\"test_valid_record_command\""),
         ];
+        // TODO: remove new command from RecordCommand and add getters to get field as for RunCommand
         let expected_command = CliCommand::Record(record::RecordCommand::new(Some(String::from(
             "\"test_valid_record_command\"",
         ))));
@@ -78,17 +80,20 @@ mod tests {
         let args = [
             String::from("replay"),
             String::from("run"),
-            String::from("\"test_valid_run_command\""),
+            String::from("replay@{0}"),
             String::from("--show"),
             String::from("--delay"),
             String::from("1"),
         ];
-        let expected_command = CliCommand::Run(run::RunCommand::new(
-            Some(String::from("\"test_valid_run_command\"")),
-            true,
-            1,
-        ));
-        assert_eq!(expected_command, parse_command(&args).unwrap())
+
+        let parsed_cmd = parse_command(&args).unwrap();
+        if let CliCommand::Run(run_cmd) = parsed_cmd {
+            assert_eq!(run_cmd.get_session_index(), Some(&0));
+            assert_eq!(run_cmd.get_show(), true);
+            assert_eq!(run_cmd.get_delay(), 1);
+        } else {
+            panic!("Expected RunCommand");
+        }
     }
 
     #[test]
@@ -96,10 +101,10 @@ mod tests {
         let args = [
             String::from("replay"),
             String::from("run"),
-            String::from("\"test_valid_run_command\""),
+            String::from("invalid_session_name"),
             String::from("--show"),
             String::from("--delay"),
-            String::from("is_not_a_number"),
+            String::from("1"),
         ];
 
         let res = parse_command(&args);

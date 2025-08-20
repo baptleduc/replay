@@ -1,5 +1,5 @@
 use crate::errors::ReplayError;
-use crate::paths;
+use crate::{paths, session};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -112,6 +112,11 @@ impl SessionIndexFile {
         Ok(session_id)
     }
 
+    pub fn get_session_id(index: u32) -> Result<String, ReplayError> {
+        let line_offset = Self::get_nth_line_offset(index)?;
+        Self::read_line_at(line_offset)
+    }
+
     /// Get the last session id without modifying the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn peek_session_id() -> Result<String, ReplayError> {
@@ -184,13 +189,27 @@ impl Session {
         todo!("implement json structure");
     }
 
-    pub fn load_session(session_name: &str) -> Result<Self, ReplayError> {
-        let _ = session_name; // TODO: remove
-        todo!("Use DEFAULT_SESSION_PATH to load session by its name, and return SessionError")
+    pub fn load_session_by_index(index: u32) -> Result<Self, ReplayError> {
+        let session_id = SessionIndexFile::get_session_id(index)?;
+
+        // Decompress
+        let ztd_session_path = Session::get_session_path(&session_id, "zst");
+        if ztd_session_path.exists() {
+            let session_file = std::fs::File::open(ztd_session_path)?;
+            let decoder = zstd::Decoder::new(session_file)?;
+            let session = serde_json::from_reader(decoder)?;
+            Ok(session)
+        } else {
+            // If the zst file doesn't exist, try the json file
+            let json_session_path = Session::get_session_path(&session_id, "json");
+            let session_file = std::fs::File::open(json_session_path)?;
+            let session = serde_json::from_reader(session_file)?;
+            Ok(session)
+        }
     }
 
     pub fn load_last_session() -> Result<Self, ReplayError> {
-        todo!("load last session");
+        Self::load_session_by_index(0)
     }
 
     pub fn save_session(&self, compress: bool) -> Result<(), ReplayError> {
