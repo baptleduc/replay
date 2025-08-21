@@ -38,37 +38,57 @@ impl SessionIndexFile {
     }
 
     /// Read the file by the end and give the byte offset of the nth line
-    fn get_nth_line_offset(n: u32) -> Result<u64, ReplayError> {
+    fn get_line_offset_by_index(n: u32) -> Result<u64, ReplayError> {
         let mut file = Self::open_file()?;
         let mut offset = file.seek(SeekFrom::End(0))?;
         let mut buf = [0u8; 1];
         let mut newlines_count = 0;
-        let mut target_offset: u64 = 0;
 
+        if offset == 0 {
+            return Err(ReplayError::SessionError("No replay entries found".into()));
+        }
+
+        // If the file is not empty, check the last byte
+        file.seek(SeekFrom::Start(offset - 1))?;
+        file.read_exact(&mut buf)?;
+
+        // If the last byte is a newline, skip it
+        // This ensures we don't count an extra empty line at the end
+        if buf[0] == b'\n' {
+            offset -= 1;
+        }
+
+        // Now we scan the file backwards to count newlines
         while offset > 0 {
+            // Move back by one byte
             offset -= 1;
             file.seek(SeekFrom::Start(offset))?;
             file.read_exact(&mut buf)?;
+
+            // If we encounter a newline, we found the end of the previous line
             if buf[0] == b'\n' {
                 newlines_count += 1;
-                if newlines_count == n + 2 {
-                    target_offset = offset + 1;
-                    break;
+
+                // If we've counted enough newlines to reach the target line
+                // `n + 1` because index 0 refers to the last line, index 1 to the second last, etc.
+                if newlines_count == n + 1 {
+                    // The start of the target line is just after this newline
+                    return Ok(offset + 1);
                 }
             }
         }
 
-        if newlines_count == 1 {
-            return Ok(0);
+        if newlines_count <= n {
+            if n == newlines_count {
+                return Ok(0);
+            } else {
+                return Err(ReplayError::SessionError(
+                    "Replay index out of range".into(),
+                ));
+            }
         }
 
-        if newlines_count == 0 {
-            return Err(ReplayError::SessionError(String::from(
-                "No replay entries found",
-            )));
-        }
-
-        Ok(target_offset)
+        Err(ReplayError::SessionError("No replay entries found".into()))
     }
 
     /// Read the line starting at a given byte position
@@ -91,7 +111,7 @@ impl SessionIndexFile {
     #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn remove_session_id(n: u32) -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
-        let line_start_offset = Self::get_nth_line_offset(n)?;
+        let line_start_offset = Self::get_line_offset_by_index(n)?;
 
         let session_id = Self::read_line_at(line_start_offset)?;
 
@@ -116,14 +136,14 @@ impl SessionIndexFile {
     }
 
     pub fn get_session_id(index: u32) -> Result<String, ReplayError> {
-        let line_offset = Self::get_nth_line_offset(index)?;
+        let line_offset = Self::get_line_offset_by_index(index)?;
         Self::read_line_at(line_offset)
     }
 
     /// Get the last session id without modifying the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn peek_session_id() -> Result<String, ReplayError> {
-        let line_offset = Self::get_nth_line_offset(0)?;
+        let line_offset = Self::get_line_offset_by_index(0)?;
         Self::read_line_at(line_offset)
     }
 
@@ -131,7 +151,7 @@ impl SessionIndexFile {
     #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn pop_session_id() -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
-        let line_offset = Self::get_nth_line_offset(0)?;
+        let line_offset = Self::get_line_offset_by_index(0)?;
         let session_id = Self::read_line_at(line_offset)?;
 
         file.set_len(line_offset)?; // truncate at the start of last line
@@ -217,6 +237,22 @@ impl Session {
         Ok(())
     }
 
+    pub fn remove_session(index: u32) -> Result<(), ReplayError> {
+        let session_id = SessionIndexFile::remove_session_id(index)?;
+        let zst_path = Session::get_session_path(&session_id, "zst");
+        if zst_path.try_exists()? {
+            std::fs::remove_file(zst_path)?;
+        } else {
+            let json_session_path = Session::get_session_path(&session_id, "json");
+            std::fs::remove_file(json_session_path)?;
+        }
+        Ok(())
+    }
+
+    pub fn remove_last_session() -> Result<(), ReplayError> {
+        Self::remove_session(0)
+    }
+
     pub fn iter_commands(&self) -> impl Iterator<Item = &String> + '_ {
         // We use impl Iterator to not have to declare RecordedCommand public
         self.commands.iter()
@@ -280,6 +316,38 @@ mod tests {
         assert!(matches!(
             SessionIndexFile::peek_session_id(),
             Err(ReplayError::SessionError(_))
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn test_session_remove() {
+        setup();
+        let session1 = Session::new(Some("test session1".into())).unwrap();
+        let session2 = Session::new(Some("test session2".into())).unwrap();
+        session1.save_session(true).unwrap();
+        session2.save_session(true).unwrap();
+        Session::remove_session(1).unwrap();
+        assert!(
+            !std::path::Path::new(&Session::get_session_path(&session1.id, "zst"))
+                .try_exists()
+                .unwrap()
+        );
+        let res = SessionIndexFile::get_session_id(1);
+        if let Err(ReplayError::SessionError(msg)) = res {
+            assert_eq!(msg, "Replay index out of range");
+        } else {
+            panic!("Expected SessionError, got {:?}", res);
+        }
+        Session::remove_last_session().unwrap();
+        assert!(
+            !std::path::Path::new(&Session::get_session_path(&session2.id, "zst"))
+                .try_exists()
+                .unwrap()
+        );
+        assert!(matches!(
+            SessionIndexFile::get_session_id(2),
+            Err(ReplayError::SessionError(ref msg)) if msg == "No replay entries found"
         ));
     }
 }
