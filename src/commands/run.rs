@@ -1,8 +1,8 @@
 //! RunCommand: Replay a recorded session with optional delay and dry-run.
 
 use super::RunnableCommand;
+use crate::args;
 use crate::errors::ReplayError;
-use crate::parsers;
 use crate::pty::{RawModeReader, run_internal};
 use crate::session::Session;
 use clap::Args;
@@ -14,7 +14,7 @@ pub struct RunCommand {
     /// Session name in the form replay@{index}
     #[arg(
         value_name = "session_name",
-        value_parser = parsers::parse_session_index
+        value_parser = args::parse_session_index
     )]
     session_index: Option<u32>,
 
