@@ -4,7 +4,7 @@
 //! It will ensure we get the correct args and then return
 //! a correct Structure to run the corresponding commands
 use crate::{
-    commands::{RunnableCommand, record, run},
+    commands::{RunnableCommand, list, record, run},
     errors::ReplayError,
 };
 use clap::{Parser, Subcommand};
@@ -23,6 +23,9 @@ pub enum CliCommand {
 
     /// Record a new session of shell commands
     Record(record::RecordCommand),
+
+    /// List all the sessions recorded
+    List(list::ListCommand),
 }
 
 impl CliCommand {
@@ -30,6 +33,7 @@ impl CliCommand {
         match self {
             CliCommand::Run(cmd) => cmd.run(),
             CliCommand::Record(cmd) => cmd.run(),
+            CliCommand::List(cmd) => cmd.run(),
         }
     }
 }
