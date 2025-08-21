@@ -44,15 +44,11 @@ impl CharBuffer {
         Some(&self.buf[start..self.buf.len() - trailing_spaces])
     }
 
-    /// Remove and return the last word in Vec<u8> as it not longer exist in buffer
+    /// Remove and return the last word in `Vec<u8>` as it not longer exist in buffer
     pub fn pop_word(&mut self) -> Option<Vec<u8>> {
-        // Return None if buffer is empty or contains only spaces
         let word_slice = self.peek_word()?;
-
-        // Copy the word into a new Vec
         let word = word_slice.to_vec();
 
-        // Count trailing spaces at the end of the buffer
         let trailing_spaces = self.count_trailing_spaces();
 
         // Truncate the buffer to remove the last word + its trailing spaces
