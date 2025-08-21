@@ -30,13 +30,17 @@ pub struct RunCommand {
 impl RunnableCommand for RunCommand {
     fn run(&self) -> Result<(), ReplayError> {
         let session: Session = match &self.session_index {
-            Some(index) => Session::load_session_by_index(*index)?,
+            Some(idx) => Session::load_session_by_index(*idx)?,
             None => Session::load_last_session()?,
         };
-        let commands: String = session.iter_commands().map(|s| s.as_str()).collect();
-        let input = RawModeReader::new(commands.as_bytes());
-        let output = stdout();
-        run_internal(input, output, false, None, false)?;
+        if self.show {
+            self.show_commands(session)?;
+        } else {
+            let commands: String = session.iter_commands().collect();
+            let input = RawModeReader::new(commands.as_bytes());
+            let output = stdout();
+            run_internal(input, output, false, None, false)?;
+        }
         Ok(())
     }
 }
