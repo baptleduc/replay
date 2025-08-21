@@ -16,6 +16,7 @@ pub mod args;
 pub mod char_buffer;
 pub mod commands;
 pub mod errors;
+pub mod parsers;
 pub mod paths;
 pub mod pty;
 pub mod session;
