@@ -9,21 +9,31 @@ use clap::Args;
 pub struct RecordCommand {
     #[arg(value_parser=RecordCommand::validate_session_description)]
     session_description: Option<String>,
-}
 
+    /// Disable default file compression
+    #[arg(long)]
+    no_compression: bool,
+}
 impl RunnableCommand for RecordCommand {
     fn run(&self) -> Result<(), ReplayError> {
         let reader = stdin();
         let writer = stdout();
-        run_internal(reader, writer, true, self.session_description.clone())
+        run_internal(
+            reader,
+            writer,
+            true,
+            self.session_description.clone(),
+            self.no_compression,
+        )
     }
 }
 
 impl RecordCommand {
     #[cfg(test)]
-    pub fn new(desc: Option<String>) -> Self {
+    pub fn new(desc: Option<String>, no_compression: bool) -> Self {
         RecordCommand {
             session_description: desc,
+            no_compression,
         }
     }
 

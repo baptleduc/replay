@@ -15,6 +15,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     user_output: W,                      // output to user (stdout, file…)
     record_user_input: bool,             // enable recording of typed commands
     session_description: Option<String>, // optional session description
+    no_compression: bool,                // disable compression
 ) -> Result<(), ReplayError> {
     terminal::enable_raw_mode()?;
 
@@ -26,9 +27,10 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     handle_user_input(
         user_input,
         pty_stdin,
+        child,
         record_user_input,
         session_description,
-        child,
+        no_compression,
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
@@ -61,9 +63,10 @@ fn spawn_shell() -> Result<(Reader, Writer, ChildProc), ReplayError> {
 fn handle_user_input<R: Read, W: Write>(
     mut user_input: R,
     mut pty_stdin: W,
+    mut child: ChildProc,
     record_input: bool,
     session_description: Option<String>,
-    mut child: ChildProc,
+    no_compression: bool,
 ) -> Result<(), ReplayError> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
@@ -118,7 +121,7 @@ fn handle_user_input<R: Read, W: Write>(
     }
 
     if record_input && session.as_mut().is_some() {
-        session.as_mut().unwrap().save_session(true)?; // By default, we compress session files
+        session.as_mut().unwrap().save_session(!no_compression)?;
     }
 
     Ok(())
@@ -184,7 +187,7 @@ mod test {
     #[serial]
     fn record_creates_valid_json_sessions() {
         let reader1 = RawModeReader::new(b"ls\recho\x7Fo test\x17test\rexit\r");
-        run_internal(reader1, Box::new(sink()), true, None).unwrap();
+        run_internal(reader1, Box::new(sink()), true, None, false).unwrap();
         let session = Session::load_last_session().unwrap();
         let mut command_iter = session.iter_commands();
         assert_eq!(command_iter.next().unwrap(), "ls\r");

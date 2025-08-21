@@ -55,9 +55,10 @@ mod tests {
             String::from("\"test_valid_record_command\""),
         ];
 
-        let expected_command = CliCommand::Record(record::RecordCommand::new(Some(String::from(
-            "\"test_valid_record_command\"",
-        ))));
+        let expected_command = CliCommand::Record(record::RecordCommand::new(
+            Some(String::from("\"test_valid_record_command\"")),
+            false,
+        ));
         assert_eq!(expected_command, parse_command(&args).unwrap())
     }
 

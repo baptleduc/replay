@@ -35,7 +35,7 @@ impl RunnableCommand for RunCommand {
         let commands: String = session.iter_commands().map(|s| s.as_str()).collect();
         let input = RawModeReader::new(commands.as_bytes());
         let output = stdout();
-        run_internal(input, output, false, None)?;
+        run_internal(input, output, false, None, false)?;
         Ok(())
     }
 }
