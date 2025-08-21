@@ -252,7 +252,7 @@ impl Session {
 
     pub fn iter_session_ids_rev()
     -> Result<impl Iterator<Item = Result<String, ReplayError>>, ReplayError> {
-        let file = File::open(SessionIndexFile::get_path())?;
+        let file = SessionIndexFile::open_file()?;
         let rev_lines = RevLines::new(file);
         Ok(rev_lines.map(|line_res| line_res.map_err(ReplayError::from)))
     }
