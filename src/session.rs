@@ -49,15 +49,13 @@ impl SessionIndexFile {
         }
 
         // If the file is not empty, check the last byte
-        if offset > 0 {
-            file.seek(SeekFrom::Start(offset - 1))?;
-            file.read_exact(&mut buf)?;
+        file.seek(SeekFrom::Start(offset - 1))?;
+        file.read_exact(&mut buf)?;
 
-            // If the last byte is a newline, skip it
-            // This ensures we don't count an extra empty line at the end
-            if buf[0] == b'\n' {
-                offset -= 1;
-            }
+        // If the last byte is a newline, skip it
+        // This ensures we don't count an extra empty line at the end
+        if buf[0] == b'\n' {
+            offset -= 1;
         }
 
         // Now we scan the file backwards to count newlines
@@ -347,11 +345,9 @@ mod tests {
                 .try_exists()
                 .unwrap()
         );
-        let res = SessionIndexFile::get_session_id(2);
-        if let Err(ReplayError::SessionError(msg)) = res {
-            assert_eq!(msg, "No replay entries found");
-        } else {
-            panic!("Expected SessionError, got {:?}", res);
-        }
+        assert!(matches!(
+            SessionIndexFile::get_session_id(2),
+            Err(ReplayError::SessionError(ref msg)) if msg == "No replay entries found"
+        ));
     }
 }
