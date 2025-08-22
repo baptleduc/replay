@@ -6,8 +6,8 @@
 use crate::errors::ReplayError;
 
 // Add commands mod below using pub mod ...
-pub mod drop;
 pub mod clear;
+pub mod drop;
 pub mod list;
 pub mod record;
 pub mod run;
