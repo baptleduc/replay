@@ -39,7 +39,7 @@ impl RunnableCommand for RunCommand {
             let commands: String = session.iter_commands().collect();
             let input = RawModeReader::new(commands.as_bytes());
             let output = stdout();
-            run_internal(input, output, false, None, false)?;
+            run_internal(input, output, false, None, false, self.delay)?;
         }
         Ok(())
     }
