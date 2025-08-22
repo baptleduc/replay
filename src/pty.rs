@@ -156,7 +156,7 @@ fn handle_user_input<R: Read, W: Write>(
         return Ok(String::from("Session saved"));
     }
 
-    Ok(String::from("No session saved"))
+    Ok(String::from("\nNo session saved"))
 }
 
 fn read_from_pty<R: Read + Send, W: Write + Send>(
