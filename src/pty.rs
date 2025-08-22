@@ -5,6 +5,7 @@ use crossterm::terminal;
 use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 type Reader = Box<dyn Read + Send>;
 type Writer = Box<dyn Write + Send>;
@@ -16,6 +17,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     record_user_input: bool,             // enable recording of typed commands
     session_description: Option<String>, // optional session description
     no_compression: bool,                // disable compression
+    delay: u64,                          // add some delay between commands executions
 ) -> Result<(), ReplayError> {
     terminal::enable_raw_mode()?;
 
@@ -31,6 +33,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
         record_user_input,
         session_description,
         no_compression,
+        delay,
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
@@ -69,6 +72,7 @@ fn handle_user_input<R: Read, W: Write>(
     record_input: bool,
     session_description: Option<String>,
     no_compression: bool,
+    delay: u64,
 ) -> Result<String, ReplayError> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
@@ -142,6 +146,9 @@ fn handle_user_input<R: Read, W: Write>(
         // Send input to PTY
         pty_stdin.write_all(&buf)?;
         pty_stdin.flush()?;
+        if c == b'\r' && delay > 0 {
+            std::thread::sleep(Duration::from_millis(delay));
+        }
     }
 
     if let Some(sess) = session {
@@ -149,7 +156,7 @@ fn handle_user_input<R: Read, W: Write>(
         return Ok(String::from("Session saved"));
     }
 
-    Ok(String::from("No session saved"))
+    Ok(String::from("\nNo session saved"))
 }
 
 fn read_from_pty<R: Read + Send, W: Write + Send>(
@@ -212,7 +219,7 @@ mod test {
     /// Helper to run a fake session and return the list of recorded commands.
     fn run_and_get_commands(input: &[u8]) -> Vec<String> {
         let reader = RawModeReader::new(input);
-        let _ = run_internal(reader, sink(), true, None, false);
+        let _ = run_internal(reader, sink(), true, None, false, 0);
 
         Session::load_last_session()
             .map(|sess| {

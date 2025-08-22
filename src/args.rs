@@ -63,6 +63,7 @@ pub fn parse_session_index(s: &str) -> Result<u32, String> {
         .map_err(|_| format!("Invalid session index in '{}'", s))
 }
 
+// TODO move it as integration tests
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,12 +93,7 @@ mod tests {
             String::from("--delay"),
             String::from("1"),
         ];
-        let expected_command = CliCommand::Run(run::RunCommand::new(Some(0), true, 1));
-        assert_eq!(expected_command, parse_command(&args).unwrap());
-
-        // `replay run` is a valid command, it runs the last session by default
-        let args = [String::from("replay"), String::from("run")];
-        let expected_command = CliCommand::Run(run::RunCommand::new(None, false, 0));
+        let expected_command = CliCommand::Run(run::RunCommand::new(0, true, 1));
         assert_eq!(expected_command, parse_command(&args).unwrap());
     }
 

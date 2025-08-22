@@ -286,9 +286,9 @@ impl Session {
         Self::remove_session(0)
     }
 
-    pub fn iter_commands(&self) -> impl Iterator<Item = &String> + '_ {
+    pub fn iter_commands(&self) -> impl Iterator<Item = &str> {
         // We use impl Iterator to not have to declare RecordedCommand public
-        self.commands.iter()
+        self.commands.iter().map(|s| s.as_str())
     }
     pub fn get_session_path(id: &str, extension: &str) -> PathBuf {
         paths::session_dir().join(format!("{}.{}", id, extension))
