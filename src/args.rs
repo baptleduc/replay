@@ -4,7 +4,7 @@
 //! It will ensure we get the correct args and then return
 //! a correct Structure to run the corresponding commands
 use crate::{
-    commands::{RunnableCommand, list, record, run},
+    commands::{RunnableCommand, drop, list, record, run},
     errors::ReplayError,
 };
 use clap::{Parser, Subcommand};
@@ -26,6 +26,9 @@ pub enum CliCommand {
 
     /// List all the sessions recorded
     List(list::ListCommand),
+
+    /// Drop a specified session, last session if not specified
+    Drop(drop::DropCommand),
 }
 
 impl CliCommand {
@@ -34,6 +37,7 @@ impl CliCommand {
             CliCommand::Run(cmd) => cmd.run(),
             CliCommand::Record(cmd) => cmd.run(),
             CliCommand::List(cmd) => cmd.run(),
+            CliCommand::Drop(cmd) => cmd.run(),
         }
     }
 }
@@ -41,6 +45,19 @@ impl CliCommand {
 pub fn parse_command(args: &[String]) -> Result<CliCommand, ReplayError> {
     let cli_command = CliParser::try_parse_from(args)?;
     Ok(cli_command.command)
+}
+
+pub fn parse_session_index(s: &str) -> Result<u32, String> {
+    s.strip_prefix("replay@{")
+        .and_then(|rest| rest.strip_suffix('}'))
+        .ok_or_else(|| {
+            format!(
+                "Session name must be of the form replay@{{index}}, got '{}'",
+                s
+            )
+        })?
+        .parse::<u32>()
+        .map_err(|_| format!("Invalid session index in '{}'", s))
 }
 
 #[cfg(test)]

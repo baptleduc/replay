@@ -1,6 +1,7 @@
 //! RunCommand: Replay a recorded session with optional delay and dry-run.
 
 use super::RunnableCommand;
+use crate::args;
 use crate::errors::ReplayError;
 use crate::pty::{RawModeReader, run_internal};
 use crate::session::Session;
@@ -13,7 +14,7 @@ pub struct RunCommand {
     /// Session name in the form replay@{index}
     #[arg(
         value_name = "session_name",
-        value_parser = RunCommand::parse_session_index
+        value_parser = args::parse_session_index
     )]
     session_index: Option<u32>,
 
@@ -48,18 +49,5 @@ impl RunCommand {
             show,
             delay,
         }
-    }
-
-    fn parse_session_index(s: &str) -> Result<u32, String> {
-        s.strip_prefix("replay@{")
-            .and_then(|rest| rest.strip_suffix('}'))
-            .ok_or_else(|| {
-                format!(
-                    "Session name must be of the form replay@{{index}}, got '{}'",
-                    s
-                )
-            })?
-            .parse::<u32>()
-            .map_err(|_| format!("Invalid session index in '{}'", s))
     }
 }
