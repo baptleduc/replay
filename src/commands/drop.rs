@@ -8,18 +8,15 @@ use clap::Args;
 pub struct DropCommand {
     #[arg(
         value_name = "session_name",
+        default_value = "replay@{0}",
         value_parser = args::parse_session_index
     )]
-    session_index: Option<u32>,
+    session_index: u32,
 }
 
 impl RunnableCommand for DropCommand {
     fn run(&self) -> Result<(), ReplayError> {
-        if let Some(index) = self.session_index {
-            Session::remove_session(index)?
-        } else {
-            Session::remove_last_session()?
-        }
+        Session::remove_session(self.session_index)?;
         Ok(())
     }
 }
