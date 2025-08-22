@@ -20,3 +20,8 @@ pub fn get_sessions_dir() -> PathBuf {
     fs::create_dir_all(&dir).expect("Failed to create sessions directory");
     dir
 }
+
+pub fn clear_replay_dir() {
+    let dir = get_replay_dir();
+    fs::remove_dir_all(&dir).expect("Failed to clear .replay directory");
+}

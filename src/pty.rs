@@ -24,7 +24,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     // Thread to read from the PTY and send data by user_output.
     let output_reader = thread::spawn(move || read_from_pty(pty_stdout, user_output));
 
-    handle_user_input(
+    let exit_msg = handle_user_input(
         user_input,
         pty_stdin,
         child,
@@ -34,6 +34,8 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
+
+    println!("{}", exit_msg);
     Ok(())
 }
 
@@ -67,7 +69,7 @@ fn handle_user_input<R: Read, W: Write>(
     record_input: bool,
     session_description: Option<String>,
     no_compression: bool,
-) -> Result<(), ReplayError> {
+) -> Result<String, ReplayError> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
     let mut char_buffer = CharBuffer::new();
@@ -83,48 +85,71 @@ fn handle_user_input<R: Read, W: Write>(
             break;
         }
 
-        match user_input.read(&mut buf)? {
-            0 => break, // EOF
-            1 => {
-                // Send to PTY
-                pty_stdin.write_all(&buf)?;
-                pty_stdin.flush()?;
-                if record_input {
-                    // Char deletion handling (Backspace)
-                    if buf[0] == b'\x7F' {
-                        char_buffer.pop_char();
-                        continue; // Not recording backspace
-                    }
-
-                    // Word deletion handling (Ctrl+W)
-                    if buf[0] == b'\x17' {
-                        char_buffer.pop_word();
-                        continue; // Not recording Ctrl-W
-                    }
-
-                    // Char addition handling
-                    char_buffer.push_char(buf[0]);
-
-                    // End of line handling
-                    if char_buffer.peek_char() == Some(&b'\r') {
-                        if let Some(sess) = session.as_mut() {
-                            sess.add_command(char_buffer.get_buf().to_vec());
-                        }
-                        char_buffer.clear();
-                    }
-                }
-            }
-            _ => {
-                unreachable!("Unexpected read size, should be 1 in terminal raw mode !");
-            }
+        let n = user_input.read(&mut buf)?;
+        if n == 0 {
+            break; // EOF
+        } else if n != 1 {
+            unreachable!("Unexpected read size, should be 1 in terminal raw mode!");
         }
+
+        let c = buf[0];
+
+        // Handle input locally
+        match c {
+            // Backspace
+            b'\x7F' => {
+                char_buffer.pop_char();
+            }
+            // Ctrl+W
+            b'\x17' => {
+                char_buffer.pop_word();
+            }
+            // Ctrl+C
+            b'\x03' => {
+                if let Some(sess) = session.as_mut() {
+                    sess.remove_last_command();
+                }
+                char_buffer.clear();
+            }
+            // Enter key
+            b'\r' => {
+                // Normal line submission
+                char_buffer.push_char(b'\r');
+                if let Some(sess) = session.as_mut() {
+                    sess.add_command(char_buffer.get_buf().to_vec());
+                }
+
+                // q + enter : quit without saving the session
+                if char_buffer.get_buf() == b"q\r" {
+                    child.kill()?;
+                    session = None; // Don't save session
+                    break;
+                }
+
+                // Exit
+                if char_buffer.get_buf() == b"exit\r" {
+                    child.kill()?;
+                    break;
+                }
+                char_buffer.clear();
+            }
+
+            _ => {
+                char_buffer.push_char(c);
+            } // Any other character
+        }
+
+        // Send input to PTY
+        pty_stdin.write_all(&buf)?;
+        pty_stdin.flush()?;
     }
 
-    if record_input && session.as_mut().is_some() {
-        session.as_mut().unwrap().save_session(!no_compression)?;
+    if let Some(sess) = session {
+        sess.save_session(!no_compression)?;
+        return Ok(String::from("Session saved"));
     }
 
-    Ok(())
+    Ok(String::from("No session saved"))
 }
 
 fn read_from_pty<R: Read + Send, W: Write + Send>(
@@ -180,20 +205,78 @@ impl std::io::Read for RawModeReader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::paths::clear_replay_dir;
     use serial_test::serial;
     use std::io::sink;
 
+    /// Helper to run a fake session and return the list of recorded commands.
+    fn run_and_get_commands(input: &[u8]) -> Vec<String> {
+        let reader = RawModeReader::new(input);
+        let _ = run_internal(reader, sink(), true, None, false);
+
+        Session::load_last_session()
+            .map(|sess| {
+                sess.iter_commands()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    }
+
     #[test]
     #[serial]
-    fn record_creates_valid_json_sessions() {
-        let reader1 = RawModeReader::new(b"ls\recho\x7Fo test\x17test\rexit\r");
-        run_internal(reader1, Box::new(sink()), true, None, false).unwrap();
+    fn record_commands_with_ctrl_c() {
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"echo test_ctrl_c\rsleep 5\r\x03exit\r");
+
+        assert_eq!(
+            cmds,
+            vec!["echo test_ctrl_c\r", "exit\r"],
+            "Expected only echo and exit to be saved when Ctrl+C is used"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn record_commands_with_q_enter() {
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"echo q\rq\r");
+
+        assert!(
+            cmds.is_empty(),
+            "No session should be saved when quitting with q+Enter"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn record_commands_with_ctrl_w() {
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"echo 1 2\x17\rexit\r");
+
+        assert_eq!(
+            cmds,
+            vec!["echo 1 \r", "exit\r"],
+            "Ctrl+W should delete the last word before saving"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn record_commands_with_all_control_chars() {
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"ls\recho\x7Fo test\x17test\rexit\r");
+
+        assert_eq!(
+            cmds,
+            vec!["ls\r", "echo test\r", "exit\r"],
+            "Combination of Backspace + Ctrl+W should still produce valid commands"
+        );
+
         let session = Session::load_last_session().unwrap();
-        let mut command_iter = session.iter_commands();
-        assert_eq!(command_iter.next().unwrap(), "ls\r");
-        assert_eq!(command_iter.next().unwrap(), "echo test\r");
-        assert_eq!(command_iter.next().unwrap(), "exit\r");
-        assert!(session.description.is_none());
-        // TODO: delete the file by calling a future remove_last_session()
+        assert!(
+            session.description.is_none(),
+            "Session description should remain None by default"
+        );
     }
 }

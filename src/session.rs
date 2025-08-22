@@ -216,6 +216,14 @@ impl Session {
             .push(String::from_utf8_lossy(&cmd_raw).to_string());
     }
 
+    pub fn remove_last_command(&mut self) -> Option<String> {
+        self.commands.pop()
+    }
+
+    pub fn get_last_command(&self) -> Option<&String> {
+        self.commands.last()
+    }
+
     fn load_from_files<T: DeserializeOwned>(session_id: &str) -> Result<T, ReplayError> {
         // Try compressed .zst first
         let zst_path = Session::get_session_path(session_id, "zst");
