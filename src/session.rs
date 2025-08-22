@@ -215,7 +215,7 @@ impl Session {
         self.commands
             .push(String::from_utf8_lossy(&cmd_raw).to_string());
     }
-    
+
     pub fn remove_last_command(&mut self) -> Option<String> {
         self.commands.pop()
     }

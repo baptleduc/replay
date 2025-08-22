@@ -24,7 +24,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     // Thread to read from the PTY and send data by user_output.
     let output_reader = thread::spawn(move || read_from_pty(pty_stdout, user_output));
 
-    handle_user_input(
+    let exit_msg = handle_user_input(
         user_input,
         pty_stdin,
         child,
@@ -34,6 +34,8 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
+
+    println!("{}", exit_msg);
     Ok(())
 }
 
@@ -67,7 +69,7 @@ fn handle_user_input<R: Read, W: Write>(
     record_input: bool,
     session_description: Option<String>,
     no_compression: bool,
-) -> Result<(), ReplayError> {
+) -> Result<String, ReplayError> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
     let mut char_buffer = CharBuffer::new();
@@ -111,25 +113,22 @@ fn handle_user_input<R: Read, W: Write>(
             }
             // Enter key
             b'\r' => {
-                // `q+Enter`: clear line & exit bash
-                if char_buffer.peek_word() == Some(&b"q"[..]) {
-                    pty_stdin.write_all(b"\x15")?; // Ctrl+U clears line
-                    pty_stdin.write_all(b"\x04")?; // Ctrl+D sends EOF
-                    pty_stdin.flush()?;
-                    session = None;
-                    break;
-                }
-
                 // Normal line submission
                 char_buffer.push_char(b'\r');
                 if let Some(sess) = session.as_mut() {
                     sess.add_command(char_buffer.get_buf().to_vec());
                 }
 
-                // bash is waiting for an EOF after to quit properly
-                if char_buffer.peek_word() == Some(&b"exit\r"[..]) {
-                    pty_stdin.write_all(b"\x04")?; // Ctrl+D sends EOF
-                    pty_stdin.flush()?;
+                // q + enter : quit without saving the session
+                if char_buffer.get_buf() == b"q\r" {
+                    child.kill()?;
+                    session = None; // Don't save session
+                    break;
+                }
+
+                // Exit
+                if char_buffer.get_buf() == b"exit\r" {
+                    child.kill()?;
                     break;
                 }
                 char_buffer.clear();
@@ -146,10 +145,11 @@ fn handle_user_input<R: Read, W: Write>(
     }
 
     if let Some(sess) = session {
-        sess.save_session(true)?;
+        sess.save_session(!no_compression)?;
+        return Ok(String::from("Session saved"));
     }
 
-    Ok(())
+    Ok(String::from("No session saved"))
 }
 
 fn read_from_pty<R: Read + Send, W: Write + Send>(
@@ -205,25 +205,29 @@ impl std::io::Read for RawModeReader {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::paths::tests::clear_replay_dir;
     use serial_test::serial;
     use std::io::sink;
 
     /// Helper to run a fake session and return the list of recorded commands.
-    fn run_and_get_commands(input: &[u8], record: bool) -> Vec<String> {
+    fn run_and_get_commands(input: &[u8]) -> Vec<String> {
         let reader = RawModeReader::new(input);
-        run_internal(reader, sink(), record, None).unwrap();
+        let _ = run_internal(reader, sink(), true, None, false);
 
         Session::load_last_session()
-            .unwrap()
-            .iter_commands()
-            .map(|s| s.to_string())
-            .collect()
+            .map(|sess| {
+                sess.iter_commands()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
     }
 
     #[test]
     #[serial]
     fn record_commands_with_ctrl_c() {
-        let cmds = run_and_get_commands(b"echo test_ctrl_c\rsleep 5\r\x03exit\r", true);
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"echo test_ctrl_c\rsleep 5\r\x03exit\r");
 
         assert_eq!(
             cmds,
@@ -232,24 +236,23 @@ mod test {
         );
     }
 
-    // ! NEED to fix this test, the pty never exits ending with an infinite test
     #[test]
     #[serial]
     fn record_commands_with_q_enter() {
-        let prev_session = Session::load_last_session().unwrap();
-        let _ = run_and_get_commands(b"q\r", true);
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"echo q\rq\r");
 
-        let last_session = Session::load_last_session().unwrap();
-        assert_eq!(
-            last_session.id, prev_session.id,
-            "Session should not be saved when quitting with q+Enter"
+        assert!(
+            cmds.is_empty(),
+            "No session should be saved when quitting with q+Enter"
         );
     }
 
     #[test]
     #[serial]
     fn record_commands_with_ctrl_w() {
-        let cmds = run_and_get_commands(b"echo 1 2\x17\rexit\r", true);
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"echo 1 2\x17\rexit\r");
 
         assert_eq!(
             cmds,
@@ -261,14 +264,16 @@ mod test {
     #[test]
     #[serial]
     fn record_commands_with_all_control_chars() {
-        let cmds = run_and_get_commands(b"ls\recho\x7Fo test\x17test\rexit\r", true);
-        let session = Session::load_last_session().unwrap();
+        clear_replay_dir();
+        let cmds = run_and_get_commands(b"ls\recho\x7Fo test\x17test\rexit\r");
 
         assert_eq!(
             cmds,
             vec!["ls\r", "echo test\r", "exit\r"],
             "Combination of Backspace + Ctrl+W should still produce valid commands"
         );
+
+        let session = Session::load_last_session().unwrap();
         assert!(
             session.description.is_none(),
             "Session description should remain None by default"
