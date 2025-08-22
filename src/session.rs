@@ -41,7 +41,7 @@ struct SessionIndexFile;
 
 impl SessionIndexFile {
     fn get_path() -> PathBuf {
-        paths::get_replay_dir().join("session_idx")
+        paths::replay_dir().join("session_idx")
     }
 
     fn open_file() -> Result<std::fs::File, ReplayError> {
@@ -291,7 +291,7 @@ impl Session {
         self.commands.iter()
     }
     pub fn get_session_path(id: &str, extension: &str) -> PathBuf {
-        paths::get_sessions_dir().join(format!("{}.{}", id, extension))
+        paths::session_dir().join(format!("{}.{}", id, extension))
     }
 
     pub fn iter_session_ids_rev()

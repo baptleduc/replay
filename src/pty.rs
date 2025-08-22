@@ -226,7 +226,7 @@ mod test {
     #[test]
     #[serial]
     fn record_commands_with_ctrl_c() {
-        clear_replay_dir();
+        clear_replay_dir().unwrap();
         let cmds = run_and_get_commands(b"echo test_ctrl_c\rsleep 5\r\x03exit\r");
 
         assert_eq!(
@@ -239,7 +239,7 @@ mod test {
     #[test]
     #[serial]
     fn record_commands_with_q_enter() {
-        clear_replay_dir();
+        clear_replay_dir().unwrap();
         let cmds = run_and_get_commands(b"echo q\rq\r");
 
         assert!(
@@ -251,7 +251,7 @@ mod test {
     #[test]
     #[serial]
     fn record_commands_with_ctrl_w() {
-        clear_replay_dir();
+        clear_replay_dir().unwrap();
         let cmds = run_and_get_commands(b"echo 1 2\x17\rexit\r");
 
         assert_eq!(
@@ -264,7 +264,7 @@ mod test {
     #[test]
     #[serial]
     fn record_commands_with_all_control_chars() {
-        clear_replay_dir();
+        clear_replay_dir().unwrap();
         let cmds = run_and_get_commands(b"ls\recho\x7Fo test\x17test\rexit\r");
 
         assert_eq!(

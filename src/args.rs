@@ -4,7 +4,7 @@
 //! It will ensure we get the correct args and then return
 //! a correct Structure to run the corresponding commands
 use crate::{
-    commands::{RunnableCommand, drop, list, record, run},
+    commands::{RunnableCommand, clear, drop, list, record, run},
     errors::ReplayError,
 };
 use clap::{Parser, Subcommand};
@@ -29,6 +29,8 @@ pub enum CliCommand {
 
     /// Drop a specified session, last session if not specified
     Drop(drop::DropCommand),
+    /// Drop all the sessions recorded
+    Clear(clear::ClearCommand),
 }
 
 impl CliCommand {
@@ -38,6 +40,7 @@ impl CliCommand {
             CliCommand::Record(cmd) => cmd.run(),
             CliCommand::List(cmd) => cmd.run(),
             CliCommand::Drop(cmd) => cmd.run(),
+            CliCommand::Clear(cmd) => cmd.run(),
         }
     }
 }
