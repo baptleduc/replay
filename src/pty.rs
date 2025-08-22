@@ -205,7 +205,7 @@ impl std::io::Read for RawModeReader {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::paths::tests::clear_replay_dir;
+    use crate::paths::clear_replay_dir;
     use serial_test::serial;
     use std::io::sink;
 

@@ -21,11 +21,7 @@ pub fn get_sessions_dir() -> PathBuf {
     dir
 }
 
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-    pub fn clear_replay_dir() {
-        let dir = get_replay_dir();
-        fs::remove_dir_all(&dir).expect("Failed to clear .replay directory");
-    }
+pub fn clear_replay_dir() {
+    let dir = get_replay_dir();
+    fs::remove_dir_all(&dir).expect("Failed to clear .replay directory");
 }
