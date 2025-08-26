@@ -4,7 +4,8 @@ use crate::session::Session;
 use crossterm::terminal;
 use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use regex::Regex;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -20,16 +21,29 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     no_compression: bool,                // disable compression
 ) -> ReplayResult<()> {
     terminal::enable_raw_mode()?;
+    let (bash_ready_sender, bash_ready_receiver) = mpsc::sync_channel::<()>(1);
+    let (command_sent_sender, command_sent_receiver) = mpsc::sync_channel::<()>(1);
 
-    let (pty_stdout, pty_stdin, child) = spawn_shell()?;
+    let (mut pty_stdout, mut pty_stdin, child) = spawn_shell()?;
+    let ps1 = get_last_ps1_char(&mut pty_stdin, &mut pty_stdout)?;
 
     // Thread to read from the PTY and send data by user_output.
-    let output_reader = thread::spawn(move || read_from_pty(pty_stdout, user_output));
+    let output_reader = thread::spawn(move || {
+        read_from_pty(
+            pty_stdout,
+            user_output,
+            bash_ready_sender,
+            command_sent_receiver,
+            ps1,
+        )
+    });
 
     let exit_msg = handle_user_input(
         user_input,
         pty_stdin,
         child,
+        bash_ready_receiver,
+        command_sent_sender,
         record_user_input,
         session_description,
         no_compression,
@@ -65,12 +79,48 @@ fn spawn_shell() -> ReplayResult<(Reader, Writer, ChildProc)> {
     let pty_stdin = pty_pair.master.take_writer()?; // user → bash
     Ok((pty_stdout, pty_stdin, bash_process))
 }
+fn is_env_var_output(line: &str) -> bool {
+    let line = line.trim();
+    let re_ansi = regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]").unwrap();
+    let line = re_ansi.replace_all(line, "");
+
+    line.starts_with("$(") && line.ends_with(")")
+}
+
+pub fn get_last_ps1_char(pty_stdin: &mut Writer, pty_stdout: &mut Reader) -> ReplayResult<char> {
+    let mut last_output = String::from("$PS1");
+    let mut reader: BufReader<&mut Box<dyn Read + Send>> = BufReader::new(pty_stdout);
+    let re_non_printable = regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]|\x01|\x02").unwrap();
+
+    loop {
+        pty_stdin.write_all(format!("echo \"{}\" \r", last_output).as_bytes())?;
+        pty_stdin.flush()?;
+        let mut line = String::new();
+        loop {
+            reader.read_line(&mut line)?;
+            let line_cleaned = re_non_printable.replace_all(&line, "");
+            let line_trimmed = line_cleaned.trim();
+            if !line_trimmed.is_empty() && !line_trimmed.contains("echo") {
+                if !is_env_var_output(line_trimmed) {
+                    let last_char = line_trimmed.chars().rev().next().unwrap();
+                    return Ok(last_char);
+                }
+
+                last_output = line_trimmed.to_string();
+                break;
+            }
+            line.clear();
+        }
+    }
+}
 
 // Precondition: Terminal is in raw mode
 fn handle_user_input<R: Read, W: Write>(
     mut user_input: R,
     mut pty_stdin: W,
     mut child: ChildProc,
+    bash_ready_receiver: Receiver<()>,
+    command_sent_sender: SyncSender<()>,
     record_input: bool,
     session_description: Option<String>,
     no_compression: bool,
@@ -79,18 +129,21 @@ fn handle_user_input<R: Read, W: Write>(
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
     let mut char_buffer = CharBuffer::new();
     let exit_re = Regex::new(r"^\s*exit\s*$").unwrap();
+    let mut first_init = true;
     let mut session: Option<Session> = if record_input {
         Some(Session::new(session_description)?)
     } else {
         None
     };
-
     loop {
         if child.try_wait()?.is_some() {
             // Check if the child process has exited
             break;
         }
-
+        if first_init {
+            bash_ready_receiver.recv().unwrap();
+            first_init = false;
+        }
         let n = user_input.read(&mut buf)?;
         if n == 0 {
             break; // EOF
@@ -145,10 +198,17 @@ fn handle_user_input<R: Read, W: Write>(
                 char_buffer.push_char(c);
             } // Any other character
         }
-
         // Send input to PTY
         pty_stdin.write_all(&buf)?;
         pty_stdin.flush()?;
+
+        if buf[0] == b'\r' {
+            // We sent a signal to indicate that we need to detect a NEW prompt
+            command_sent_sender.send(()).unwrap();
+
+            // We block the main thread
+            bash_ready_receiver.recv().unwrap();
+        }
     }
 
     if let Some(sess) = session {
@@ -160,18 +220,46 @@ fn handle_user_input<R: Read, W: Write>(
 }
 
 fn read_from_pty<R: Read + Send, W: Write + Send>(
-    mut pty_output: R,  // PTY → bash output
-    mut user_output: W, // user-visible output
+    mut pty_output: R,
+    mut user_output: W,
+    bash_ready_sender: SyncSender<()>,
+    command_sent_receiver: Receiver<()>,
+    ps1: char,
 ) -> ReplayResult<()> {
-    let mut buffer = [0u8; 1024];
+    let mut read_buf = [0u8; 1024];
+    let mut prompt_already_seen: bool = false;
+    let re_non_printable =
+        Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]|[\x01\x02]|\x1b\][^\x07]*\x07|\x1b\??\d*[hl]").unwrap();
+
     loop {
-        let n = pty_output.read(&mut buffer)?;
+        let n = pty_output.read(&mut read_buf)?;
         if n == 0 {
-            break;
+            break; // EOF
         }
-        user_output.write_all(&buffer[..n])?;
+
+        // When the main thread will be blocked
+        // we suppose the CPU to run this thread as it is the only other one
+        // so just after a command will be sent, this thread will handle a
+        // new prompt detection turning prompt_already_seen to false
+        if command_sent_receiver.try_recv().is_ok() {
+            prompt_already_seen = false;
+        };
+
+        user_output.write_all(&read_buf[..n])?;
         user_output.flush()?;
+
+        let tail_vec: &Vec<u8> = &read_buf[..n].to_vec();
+        let tail_str = String::from_utf8_lossy(&tail_vec);
+        let cleaned = re_non_printable
+            .replace_all(&tail_str, "")
+            .trim()
+            .to_string();
+        if cleaned.ends_with(&ps1.to_string()) && !prompt_already_seen {
+            let _ = bash_ready_sender.send(());
+            prompt_already_seen = true;
+        }
     }
+
     Ok(())
 }
 
@@ -194,7 +282,7 @@ impl Default for RawModeReader {
         Self {
             data: Vec::new(),
             pos: 0,
-            delay: Duration::from_millis(10),
+            delay: Duration::from_millis(0),
         }
     }
 }
@@ -204,7 +292,7 @@ impl RawModeReader {
         Self {
             data: input.to_vec(),
             pos: 0,
-            delay: Duration::from_millis(10),
+            delay: Duration::from_millis(0),
         }
     }
 
