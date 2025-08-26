@@ -24,6 +24,9 @@ pub enum ReplayError {
     #[error("Error while reading line in reverse order: {0}")]
     RevLinesError(#[from] rev_lines::RevLinesError),
 
+    #[error("UTF-8 error: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
+
     #[error("Unknown replay error")]
     Unknown,
 }
