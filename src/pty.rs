@@ -39,7 +39,10 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
 
-    println!("{}", exit_msg);
+    if record_user_input {
+        println!("{}", exit_msg);
+    }
+
     Ok(())
 }
 
@@ -159,7 +162,7 @@ fn handle_user_input<R: Read, W: Write>(
         return Ok(String::from("Session saved"));
     }
 
-    Ok(String::from("\nNo session saved"))
+    Ok(String::from("No session saved"))
 }
 
 fn read_from_pty<R: Read + Send, W: Write + Send>(
