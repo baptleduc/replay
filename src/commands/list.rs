@@ -24,7 +24,7 @@ impl ListCommand {
         let iter = Session::iter_session_ids_rev()?;
         Ok(iter.enumerate().map(|(i, line_res)| {
             let line = line_res?;
-            let session_metadata = Session::load_metadata(&line)?;
+            let session_metadata = Session::load_metadata_by_index(&line)?;
             Ok(format!(
                 "replay@{{{}}}: {}",
                 i,

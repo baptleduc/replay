@@ -16,7 +16,7 @@ pub struct DropCommand {
 
 impl RunnableCommand for DropCommand {
     fn run(&self) -> Result<(), ReplayError> {
-        Session::remove_session(self.session_index)?;
+        Session::remove_session_by_index(self.session_index)?;
         Ok(())
     }
 }

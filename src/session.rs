@@ -113,7 +113,6 @@ impl SessionIndexFile {
     }
 
     /// Read the line starting at a given byte position
-    #[allow(dead_code)] // TODO: Remove this when the function will be used
     fn read_line_at(offset: u64) -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
         file.seek(SeekFrom::Start(offset))?;
@@ -129,7 +128,6 @@ impl SessionIndexFile {
     }
 
     /// Get the nth session id and remove it from the file
-    #[allow(dead_code)] // TODO: Remove this when the function will be used
     pub fn remove_session_id(n: u32) -> Result<String, ReplayError> {
         let mut file = Self::open_file()?;
         let line_start_offset = Self::get_line_offset_by_index(n)?;
@@ -159,26 +157,6 @@ impl SessionIndexFile {
     pub fn get_session_id(index: u32) -> Result<String, ReplayError> {
         let line_offset = Self::get_line_offset_by_index(index)?;
         Self::read_line_at(line_offset)
-    }
-
-    /// Get the last session id without modifying the file
-    #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn peek_session_id() -> Result<String, ReplayError> {
-        let line_offset = Self::get_line_offset_by_index(0)?;
-        Self::read_line_at(line_offset)
-    }
-
-    /// Get the last session id and remove it from the file
-    #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn pop_session_id() -> Result<String, ReplayError> {
-        let mut file = Self::open_file()?;
-        let line_offset = Self::get_line_offset_by_index(0)?;
-        let session_id = Self::read_line_at(line_offset)?;
-
-        file.set_len(line_offset)?; // truncate at the start of last line
-        file.flush()?;
-
-        Ok(session_id)
     }
 }
 
@@ -247,12 +225,8 @@ impl Session {
         Session::load_from_files(&session_id)
     }
 
-    pub fn load_metadata(session_id: &str) -> Result<MetaData, ReplayError> {
-        Session::load_from_files(session_id)
-    }
-
-    pub fn load_last_session() -> Result<Self, ReplayError> {
-        Self::load_session_by_index(0)
+    pub fn load_metadata_by_index(index: &str) -> Result<MetaData, ReplayError> {
+        Session::load_from_files(index)
     }
 
     pub fn save_session(&self, compress: bool) -> Result<(), ReplayError> {
@@ -270,7 +244,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn remove_session(index: u32) -> Result<(), ReplayError> {
+    pub fn remove_session_by_index(index: u32) -> Result<(), ReplayError> {
         let session_id = SessionIndexFile::remove_session_id(index)?;
         let zst_path = Session::get_session_path(&session_id, "zst");
         if zst_path.try_exists()? {
@@ -280,10 +254,6 @@ impl Session {
             std::fs::remove_file(json_session_path)?;
         }
         Ok(())
-    }
-
-    pub fn remove_last_session() -> Result<(), ReplayError> {
-        Self::remove_session(0)
     }
 
     pub fn iter_commands(&self) -> impl Iterator<Item = &str> {
@@ -340,21 +310,27 @@ pub mod tests {
         setup();
         let session_1 = Session::new(Some("test session 1".into())).unwrap();
         session_1.save_session(true).unwrap();
-        assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_1.id);
+        assert_eq!(SessionIndexFile::get_session_id(0).unwrap(), session_1.id);
 
         let session_2 = Session::new(Some("test session 2".into())).unwrap();
         session_2.save_session(true).unwrap();
-        assert_eq!(SessionIndexFile::peek_session_id().unwrap(), session_2.id);
-        assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_2.id);
-        assert_eq!(SessionIndexFile::pop_session_id().unwrap(), session_1.id);
+        assert_eq!(SessionIndexFile::get_session_id(0).unwrap(), session_2.id);
+        assert_eq!(
+            SessionIndexFile::remove_session_id(0).unwrap(),
+            session_2.id
+        );
+        assert_eq!(
+            SessionIndexFile::remove_session_id(0).unwrap(),
+            session_1.id
+        );
 
         // Test popping and peeking from empty index file returns error
         assert!(matches!(
-            SessionIndexFile::pop_session_id(),
+            SessionIndexFile::remove_session_id(0),
             Err(ReplayError::SessionError(_))
         ));
         assert!(matches!(
-            SessionIndexFile::peek_session_id(),
+            SessionIndexFile::get_session_id(0),
             Err(ReplayError::SessionError(_))
         ));
     }
@@ -367,7 +343,7 @@ pub mod tests {
         let session2 = Session::new(Some("test session2".into())).unwrap();
         session1.save_session(true).unwrap();
         session2.save_session(true).unwrap();
-        Session::remove_session(1).unwrap();
+        Session::remove_session_by_index(1).unwrap();
         assert!(
             !std::path::Path::new(&Session::get_session_path(&session1.id, "zst"))
                 .try_exists()
@@ -379,7 +355,7 @@ pub mod tests {
         } else {
             panic!("Expected SessionError, got {:?}", res);
         }
-        Session::remove_last_session().unwrap();
+        Session::remove_session_by_index(0).unwrap();
         assert!(
             !std::path::Path::new(&Session::get_session_path(&session2.id, "zst"))
                 .try_exists()
