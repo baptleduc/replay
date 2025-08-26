@@ -3,6 +3,7 @@ use crate::errors::ReplayError;
 use crate::session::Session;
 use crossterm::terminal;
 use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
+use regex::Regex;
 use std::io::{Read, Write};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -77,6 +78,7 @@ fn handle_user_input<R: Read, W: Write>(
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
     let mut char_buffer = CharBuffer::new();
+    let exit_re = Regex::new(r"^\s*exit\s*$").unwrap();
     let mut session: Option<Session> = if record_input {
         Some(Session::new(session_description)?)
     } else {
@@ -131,7 +133,7 @@ fn handle_user_input<R: Read, W: Write>(
                 }
 
                 // Exit
-                if char_buffer.get_buf() == b"exit\r" {
+                if exit_re.is_match(std::str::from_utf8(char_buffer.get_buf())?) {
                     // We drop `pty_stdin` instead of `child` to ensure it close properly
                     drop(pty_stdin);
                     break;
@@ -285,6 +287,19 @@ mod test {
         assert!(
             session.description.is_none(),
             "Session description should remain None by default"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn record_exit_command_only() {
+        clear_replay_dir().unwrap();
+        let cmds = run_and_get_commands(b"echo exit\r     exit     \r");
+
+        assert_eq!(
+            cmds,
+            vec!["echo exit\r", "     exit     \r"],
+            "Expected echo and exit commands to be saved"
         );
     }
 }
