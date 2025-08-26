@@ -132,7 +132,8 @@ fn handle_user_input<R: Read, W: Write>(
 
                 // Exit
                 if char_buffer.get_buf() == b"exit\r" {
-                    child.kill()?;
+                    // We drop `pty_stdin` instead of `child` to ensure it close properly
+                    drop(pty_stdin);
                     break;
                 }
                 char_buffer.clear();
