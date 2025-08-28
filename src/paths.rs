@@ -1,4 +1,4 @@
-use crate::errors::ReplayError;
+use crate::errors::Result;
 #[cfg(test)]
 use std::env::temp_dir;
 use std::fs;
@@ -28,7 +28,7 @@ pub fn session_dir() -> PathBuf {
     dir
 }
 
-pub fn clear_replay_dir() -> Result<(), ReplayError> {
+pub fn clear_replay_dir() -> Result<()> {
     let dir_path = replay_dir_path();
     if dir_path.exists() {
         fs::remove_dir_all(&dir_path)?;

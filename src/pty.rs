@@ -1,5 +1,5 @@
 use crate::char_buffer::CharBuffer;
-use crate::errors::ReplayError;
+use crate::errors::{ReplayError, Result};
 use crate::session::Session;
 use crossterm::terminal;
 use portable_pty::{Child, CommandBuilder, NativePtySystem, PtySize, PtySystem};
@@ -19,7 +19,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     session_description: Option<String>, // optional session description
     no_compression: bool,                // disable compression
     delay: u64,                          // add some delay between commands executions
-) -> Result<(), ReplayError> {
+) -> Result<()> {
     terminal::enable_raw_mode()?;
 
     let (pty_stdout, pty_stdin, child) = spawn_shell()?;
@@ -46,7 +46,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     Ok(())
 }
 
-fn spawn_shell() -> Result<(Reader, Writer, ChildProc), ReplayError> {
+fn spawn_shell() -> Result<(Reader, Writer, ChildProc)> {
     let pty_system = NativePtySystem::default();
 
     // Open a pseudo-terminal
@@ -77,7 +77,7 @@ fn handle_user_input<R: Read, W: Write>(
     session_description: Option<String>,
     no_compression: bool,
     delay: u64,
-) -> Result<String, ReplayError> {
+) -> Result<String> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
     let mut char_buffer = CharBuffer::new();
@@ -168,7 +168,7 @@ fn handle_user_input<R: Read, W: Write>(
 fn read_from_pty<R: Read + Send, W: Write + Send>(
     mut pty_output: R,  // PTY → bash output
     mut user_output: W, // user-visible output
-) -> Result<(), ReplayError> {
+) -> Result<()> {
     let mut buffer = [0u8; 1024];
     loop {
         let n = pty_output.read(&mut buffer)?;
@@ -181,9 +181,7 @@ fn read_from_pty<R: Read + Send, W: Write + Send>(
     Ok(())
 }
 
-fn join_output_thread(
-    output_thread: JoinHandle<Result<(), ReplayError>>,
-) -> Result<(), ReplayError> {
+fn join_output_thread(output_thread: JoinHandle<Result<()>>) -> Result<()> {
     // We don't want the program to panic at any moment since we catch error in the main program
     output_thread
         .join()
