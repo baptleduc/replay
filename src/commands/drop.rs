@@ -1,6 +1,6 @@
 use super::RunnableCommand;
 use crate::args;
-use crate::errors::ReplayError;
+use crate::errors::Result;
 use crate::session::Session;
 use clap::Args;
 
@@ -15,7 +15,7 @@ pub struct DropCommand {
 }
 
 impl RunnableCommand for DropCommand {
-    fn run(&self) -> Result<(), ReplayError> {
+    fn run(&self) -> Result<()> {
         Session::remove_session_by_index(self.session_index)?;
         Ok(())
     }

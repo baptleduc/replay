@@ -2,7 +2,7 @@
 
 use super::RunnableCommand;
 use crate::args;
-use crate::errors::ReplayError;
+use crate::errors::Result;
 use crate::pty::{RawModeReader, run_internal};
 use crate::session::Session;
 use clap::{Args, value_parser};
@@ -30,7 +30,7 @@ pub struct RunCommand {
 }
 
 impl RunnableCommand for RunCommand {
-    fn run(&self) -> Result<(), ReplayError> {
+    fn run(&self) -> Result<()> {
         let session: Session = Session::load_session_by_index(self.session_index)?;
         if self.show {
             self.show_commands(session)?;
@@ -57,7 +57,7 @@ impl RunCommand {
         }
     }
 
-    fn show_commands(&self, session: Session) -> Result<(), ReplayError> {
+    fn show_commands(&self, session: Session) -> Result<()> {
         println!("Commands for session 'replay@{{{}}}':", self.session_index);
         // The last command is always "exit", so we skip printing it
         for (i, cmd) in session
