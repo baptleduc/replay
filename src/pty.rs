@@ -18,7 +18,6 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     record_user_input: bool,             // enable recording of typed commands
     session_description: Option<String>, // optional session description
     no_compression: bool,                // disable compression
-    delay: u64,                          // add some delay between commands executions
 ) -> Result<(), ReplayError> {
     terminal::enable_raw_mode()?;
 
@@ -34,7 +33,6 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
         record_user_input,
         session_description,
         no_compression,
-        delay,
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
@@ -76,7 +74,6 @@ fn handle_user_input<R: Read, W: Write>(
     record_input: bool,
     session_description: Option<String>,
     no_compression: bool,
-    delay: u64,
 ) -> Result<String, ReplayError> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
@@ -152,9 +149,6 @@ fn handle_user_input<R: Read, W: Write>(
         // Send input to PTY
         pty_stdin.write_all(&buf)?;
         pty_stdin.flush()?;
-        if c == b'\r' && delay > 0 {
-            std::thread::sleep(Duration::from_millis(delay));
-        }
     }
 
     if let Some(sess) = session {
@@ -194,12 +188,33 @@ fn join_output_thread(
 pub struct RawModeReader {
     data: Vec<u8>,
     pos: usize,
+    delay: Duration,
 }
+
+impl Default for RawModeReader {
+    fn default() -> Self {
+        Self {
+            data: Vec::new(),
+            pos: 0,
+            delay: Duration::from_millis(10),
+        }
+    }
+}
+
 impl RawModeReader {
-    pub fn new(input: &[u8]) -> Self {
+    pub fn with_input(input: &[u8]) -> Self {
         Self {
             data: input.to_vec(),
             pos: 0,
+            delay: Duration::from_millis(10),
+        }
+    }
+
+    pub fn with_input_and_delay(input: &[u8], delay: Duration) -> Self {
+        Self {
+            data: input.to_vec(),
+            pos: 0,
+            delay,
         }
     }
 }
@@ -209,6 +224,7 @@ impl std::io::Read for RawModeReader {
         if self.pos >= self.data.len() {
             return Ok(0);
         }
+        std::thread::sleep(self.delay);
         buf[0] = self.data[self.pos];
         self.pos += 1;
         Ok(1)
@@ -224,8 +240,8 @@ mod test {
 
     /// Helper to run a fake session and return the list of recorded commands.
     fn run_and_get_commands(input: &[u8]) -> Vec<String> {
-        let reader = RawModeReader::new(input);
-        let _ = run_internal(reader, sink(), true, None, false, 0);
+        let reader = RawModeReader::with_input(input);
+        let _ = run_internal(reader, sink(), true, None, false);
 
         Session::load_last_session()
             .map(|sess| {

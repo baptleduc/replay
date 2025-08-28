@@ -91,9 +91,9 @@ mod tests {
             String::from("replay@{0}"),
             String::from("--show"),
             String::from("--delay"),
-            String::from("1"),
+            String::from("10"),
         ];
-        let expected_command = CliCommand::Run(run::RunCommand::new(0, true, 1));
+        let expected_command = CliCommand::Run(run::RunCommand::new(0, true, 10));
         assert_eq!(expected_command, parse_command(&args).unwrap());
     }
 
@@ -106,7 +106,7 @@ mod tests {
             String::from("invalid_session_name"),
             String::from("--show"),
             String::from("--delay"),
-            String::from("1"),
+            String::from("10"),
         ];
         let res = parse_command(&args);
         assert!(matches!(res, Err(ReplayError::ClapError(_))));
@@ -119,6 +119,18 @@ mod tests {
             String::from("--show"),
             String::from("--delay"),
             String::from("a"),
+        ];
+        let res = parse_command(&args);
+        assert!(matches!(res, Err(ReplayError::ClapError(_))));
+
+        // Delay not in the right range
+        let args = [
+            String::from("replay"),
+            String::from("run"),
+            String::from("replay@{0}"),
+            String::from("--show"),
+            String::from("--delay"),
+            String::from("1"),
         ];
         let res = parse_command(&args);
         assert!(matches!(res, Err(ReplayError::ClapError(_))));

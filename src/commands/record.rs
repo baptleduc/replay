@@ -24,7 +24,6 @@ impl RunnableCommand for RecordCommand {
             true,
             self.session_description.clone(),
             self.no_compression,
-            0,
         )
     }
 }
