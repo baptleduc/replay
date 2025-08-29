@@ -1,6 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
-use replay::session::Session;
+use replay_pty::session::Session;
 use serial_test::serial;
 use uuid::Uuid;
 
