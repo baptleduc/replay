@@ -1,7 +1,7 @@
 use std::io::{stdin, stdout};
 
 use super::RunnableCommand;
-use crate::errors::ReplayError;
+use crate::errors::ReplayResult;
 use crate::pty::run_internal;
 use clap::Args;
 
@@ -15,7 +15,7 @@ pub struct RecordCommand {
     no_compression: bool,
 }
 impl RunnableCommand for RecordCommand {
-    fn run(&self) -> Result<(), ReplayError> {
+    fn run(&self) -> ReplayResult<()> {
         let reader = stdin();
         let writer = stdout();
         run_internal(

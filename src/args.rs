@@ -5,7 +5,7 @@
 //! a correct Structure to run the corresponding commands
 use crate::{
     commands::{RunnableCommand, clear, drop, list, record, run},
-    errors::ReplayError,
+    errors::ReplayResult,
 };
 use clap::{Parser, Subcommand};
 
@@ -34,7 +34,7 @@ pub enum CliCommand {
 }
 
 impl CliCommand {
-    pub fn run(&self) -> Result<(), ReplayError> {
+    pub fn run(&self) -> ReplayResult<()> {
         match self {
             CliCommand::Run(cmd) => cmd.run(),
             CliCommand::Record(cmd) => cmd.run(),
@@ -45,7 +45,7 @@ impl CliCommand {
     }
 }
 
-pub fn parse_command(args: &[String]) -> Result<CliCommand, ReplayError> {
+pub fn parse_command(args: &[String]) -> ReplayResult<CliCommand> {
     let cli_command = CliParser::try_parse_from(args)?;
     Ok(cli_command.command)
 }
@@ -67,6 +67,7 @@ pub fn parse_session_index(s: &str) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::errors::ReplayError;
 
     #[test]
     fn test_valid_record_command() {
