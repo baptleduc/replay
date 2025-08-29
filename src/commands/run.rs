@@ -5,7 +5,7 @@ use crate::args;
 use crate::errors::ReplayError;
 use crate::pty::{RawModeReader, run_internal};
 use crate::session::Session;
-use clap::Args;
+use clap::{Args, value_parser};
 use std::io::stdout;
 
 /// CLI command to run a recorded session.
@@ -23,8 +23,9 @@ pub struct RunCommand {
     #[arg(short, long)]
     show: bool,
 
-    /// Delay (in milliseconds) between commands
-    #[arg(long, short, default_value_t = 0, value_name = "ms")]
+    /// Delay in milliseconds between each character during replay typing.
+    /// Must be at least 10 ms.
+    #[arg(long, short, default_value_t = 10, value_name = "ms", value_parser = value_parser!(u64).range(10..))]
     delay: u64,
 }
 
@@ -35,9 +36,12 @@ impl RunnableCommand for RunCommand {
             self.show_commands(session)?;
         } else {
             let commands: String = session.iter_commands().collect();
-            let input = RawModeReader::new(commands.as_bytes());
+            let input = RawModeReader::with_input_and_delay(
+                commands.as_bytes(),
+                std::time::Duration::from_millis(self.delay),
+            );
             let output = stdout();
-            run_internal(input, output, false, None, false, self.delay)?;
+            run_internal(input, output, false, None, false)?;
         }
         Ok(())
     }
