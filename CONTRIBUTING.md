@@ -109,22 +109,22 @@ Examples:
 
 ### Commit management after review
 
-When addressing review feedback, please use **fixup commits** instead of rewriting history yourself:
+When addressing feedback from a code review, **do not rewrite history**. Instead, create a fix commit that clearly describes what was fixed:
 
 ```sh
-git commit --fixup=<commit-hash>
+git commit -m "fix:<description of the fix>"
 ```
 
 Otherwise the history of review changes is lost and for large PRs, it makes it difficult for the reviewer to follow them. It might also happen that you introduce regression and won't be able to recover them from previous commits.
 
-Once reviewers approve your changes, follow these steps:
+Once reviewers approve your changes, follow these steps to ensure no merging conflict with main:
 
 ```sh
 git fetch origin
-git rebase -i --autosquash origin/main
+git rebase origin/main
 ```
 
-Then push your branch with:
+Then resolve potential conflicts with main and then push your branch with:
 ```sh
 git push --force-with-lease
 ```
