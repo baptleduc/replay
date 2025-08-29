@@ -227,7 +227,7 @@ mod test {
         let reader = RawModeReader::new(input);
         let _ = run_internal(reader, sink(), true, None, false, 0);
 
-        Session::load_session_by_index(0)
+        Session::load_last_session()
             .map(|sess| {
                 sess.iter_commands()
                     .map(|s| s.to_string())
@@ -286,7 +286,7 @@ mod test {
             "Combination of Backspace + Ctrl+W should still produce valid commands"
         );
 
-        let session = Session::load_session_by_index(0).unwrap();
+        let session = Session::load_last_session().unwrap();
         assert!(
             session.description.is_none(),
             "Session description should remain None by default"

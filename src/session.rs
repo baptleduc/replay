@@ -225,6 +225,10 @@ impl Session {
         Session::load_from_files(&session_id)
     }
 
+    pub fn load_last_session() -> Result<Self, ReplayError> {
+        Self::load_session_by_index(0)
+    }
+
     pub fn load_metadata_by_index(index: &str) -> Result<MetaData, ReplayError> {
         Session::load_from_files(index)
     }
@@ -254,6 +258,9 @@ impl Session {
             std::fs::remove_file(json_session_path)?;
         }
         Ok(())
+    }
+    pub fn remove_last_session() -> Result<(), ReplayError> {
+        Self::remove_session_by_index(0)
     }
 
     pub fn iter_commands(&self) -> impl Iterator<Item = &str> {
