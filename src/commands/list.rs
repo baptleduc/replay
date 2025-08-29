@@ -1,7 +1,7 @@
 use super::RunnableCommand;
 use crate::errors::ReplayResult;
 use crate::session::MetaData;
-use crate::session::Session;
+use crate::session::{Session, SessionId};
 use chrono::Utc;
 use clap::Args;
 
@@ -24,7 +24,7 @@ impl ListCommand {
         let iter = Session::iter_session_ids_rev()?;
         Ok(iter.enumerate().map(|(i, line_res)| {
             let line = line_res?;
-            let session_metadata = Session::load_metadata(&line)?;
+            let session_metadata = Session::load_metadata(&line.parse::<SessionId>()?)?;
             Ok(format!(
                 "replay@{{{}}}: {}",
                 i,

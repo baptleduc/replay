@@ -4,16 +4,57 @@ use chrono::Utc;
 use rev_lines::RevLines;
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
+use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-
+use std::str::FromStr;
 const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionId(String);
+
+impl SessionId {
+    pub fn new(raw: String) -> Self {
+        SessionId(raw)
+    }
+
+    fn generate_id(
+        description: &Option<String>,
+        timestamp: &chrono::DateTime<Utc>,
+        user: &str,
+    ) -> SessionId {
+        let mut hasher = Sha256::new();
+
+        hasher.update(user.as_bytes());
+        if let Some(desc) = description {
+            hasher.update(desc.as_bytes());
+        }
+        hasher.update(timestamp.to_rfc3339().as_bytes());
+
+        Self::new(format!("{:x}", hasher.finalize()))
+    }
+}
+
+// We implement FromStr to be able to use parse::<SessionId>()
+impl FromStr for SessionId {
+    type Err = ReplayError;
+
+    fn from_str(s: &str) -> ReplayResult<Self> {
+        Ok(SessionId(s.to_string()))
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Session {
     pub description: Option<String>,
-    pub id: String,
+    pub id: SessionId,
     pub timestamp: chrono::DateTime<Utc>,
     pub user: String,
     pub commands: Vec<String>,
@@ -52,7 +93,7 @@ impl SessionIndexFile {
             .open(Self::get_path())?)
     }
 
-    pub fn push_session(session_id: &str) -> ReplayResult<()> {
+    pub fn push_session(session_id: &SessionId) -> ReplayResult<()> {
         let mut file = Self::open_file()?;
         writeln!(file, "{}", session_id)?;
         Ok(())
@@ -130,17 +171,17 @@ impl SessionIndexFile {
 
     /// Get the nth session id and remove it from the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn remove_session_id(n: u32) -> ReplayResult<String> {
+    pub fn remove_session_id(n: u32) -> ReplayResult<SessionId> {
         let mut file = Self::open_file()?;
         let line_start_offset = Self::get_line_offset_by_index(n)?;
 
-        let session_id = Self::read_line_at(line_start_offset)?;
+        let line = Self::read_line_at(line_start_offset)?;
 
         // Calculate the position of next line
         // Note: `read_line_at` returns the line without the trailing newline character,
         // so `session_id.len()` does not include the newline. The actual line in the file
         // is `session_id.len() + 1` bytes (session ID plus '\n'), so this calculation is correct.
-        let next_line_offset = line_start_offset + session_id.len() as u64 + 1;
+        let next_line_offset = line_start_offset + line.len() as u64 + 1;
 
         // Read the end of the file after this line
         let mut rest = Vec::new();
@@ -153,32 +194,32 @@ impl SessionIndexFile {
         file.write_all(&rest)?;
         file.flush()?;
 
-        Ok(session_id)
+        line.parse()
     }
 
-    pub fn get_session_id(index: u32) -> ReplayResult<String> {
+    pub fn get_session_id(index: u32) -> ReplayResult<SessionId> {
         let line_offset = Self::get_line_offset_by_index(index)?;
-        Self::read_line_at(line_offset)
+        Self::read_line_at(line_offset)?.parse()
     }
 
     /// Get the last session id without modifying the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn peek_session_id() -> ReplayResult<String> {
+    pub fn peek_session_id() -> ReplayResult<SessionId> {
         let line_offset = Self::get_line_offset_by_index(0)?;
-        Self::read_line_at(line_offset)
+        Self::read_line_at(line_offset)?.parse()
     }
 
     /// Get the last session id and remove it from the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn pop_session_id() -> ReplayResult<String> {
+    pub fn pop_session_id() -> ReplayResult<SessionId> {
         let mut file = Self::open_file()?;
         let line_offset = Self::get_line_offset_by_index(0)?;
-        let session_id = Self::read_line_at(line_offset)?;
+        let id_line = Self::read_line_at(line_offset)?;
 
         file.set_len(line_offset)?; // truncate at the start of last line
         file.flush()?;
 
-        Ok(session_id)
+        id_line.parse()
     }
 }
 
@@ -188,27 +229,11 @@ impl Session {
         let timestamp = Utc::now();
         Ok(Self {
             commands: Vec::new(),
-            id: Self::generate_id(&description, &timestamp, &user),
+            id: SessionId::generate_id(&description, &timestamp, &user),
             description,
             timestamp,
             user,
         })
-    }
-
-    fn generate_id(
-        description: &Option<String>,
-        timestamp: &chrono::DateTime<Utc>,
-        user: &str,
-    ) -> String {
-        let mut hasher = Sha256::new();
-
-        hasher.update(user.as_bytes());
-        if let Some(desc) = description {
-            hasher.update(desc.as_bytes());
-        }
-        hasher.update(timestamp.to_rfc3339().as_bytes());
-
-        format!("{:x}", hasher.finalize())
     }
 
     pub fn add_command(&mut self, cmd_raw: Vec<u8>) {
@@ -224,7 +249,7 @@ impl Session {
         self.commands.last()
     }
 
-    fn load_from_files<T: DeserializeOwned>(session_id: &str) -> ReplayResult<T> {
+    fn load_from_files<T: DeserializeOwned>(session_id: &SessionId) -> ReplayResult<T> {
         // Try compressed .zst first
         let zst_path = Session::get_session_path(session_id, "zst");
         if zst_path.try_exists()? {
@@ -247,7 +272,7 @@ impl Session {
         Session::load_from_files(&session_id)
     }
 
-    pub fn load_metadata(session_id: &str) -> ReplayResult<MetaData> {
+    pub fn load_metadata(session_id: &SessionId) -> ReplayResult<MetaData> {
         Session::load_from_files(session_id)
     }
 
@@ -290,8 +315,8 @@ impl Session {
         // We use impl Iterator to not have to declare RecordedCommand public
         self.commands.iter().map(|s| s.as_str())
     }
-    pub fn get_session_path(id: &str, extension: &str) -> PathBuf {
-        paths::session_dir().join(format!("{}.{}", id, extension))
+    pub fn get_session_path(session_id: &SessionId, extension: &str) -> PathBuf {
+        paths::session_dir().join(format!("{}.{}", session_id, extension))
     }
 
     pub fn iter_session_ids_rev() -> ReplayResult<impl Iterator<Item = ReplayResult<String>>> {
