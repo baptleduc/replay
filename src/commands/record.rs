@@ -1,7 +1,7 @@
 use std::io::{stdin, stdout};
 
 use super::RunnableCommand;
-use crate::errors::Result;
+use crate::errors::ReplayResult;
 use crate::pty::run_internal;
 use clap::Args;
 
@@ -15,7 +15,7 @@ pub struct RecordCommand {
     no_compression: bool,
 }
 impl RunnableCommand for RecordCommand {
-    fn run(&self) -> Result<()> {
+    fn run(&self) -> ReplayResult<()> {
         let reader = stdin();
         let writer = stdout();
         run_internal(
@@ -38,7 +38,7 @@ impl RecordCommand {
         }
     }
 
-    fn validate_session_description(s: &str) -> std::result::Result<String, String> {
+    fn validate_session_description(s: &str) -> Result<String, String> {
         if s.len() < 10 {
             return Err(String::from(
                 "Session description is too short (min 10 chars)",

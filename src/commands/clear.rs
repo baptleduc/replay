@@ -1,5 +1,5 @@
 use super::RunnableCommand;
-use crate::errors::Result;
+use crate::errors::ReplayResult;
 use crate::paths;
 use clap::Args;
 
@@ -7,7 +7,7 @@ use clap::Args;
 pub struct ClearCommand {}
 
 impl RunnableCommand for ClearCommand {
-    fn run(&self) -> Result<()> {
+    fn run(&self) -> ReplayResult<()> {
         paths::clear_replay_dir()?;
         println!("Sessions cleared");
         Ok(())

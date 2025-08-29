@@ -1,5 +1,5 @@
 use super::RunnableCommand;
-use crate::errors::Result;
+use crate::errors::ReplayResult;
 use crate::session::MetaData;
 use crate::session::Session;
 use chrono::Utc;
@@ -9,7 +9,7 @@ use clap::Args;
 pub struct ListCommand {}
 
 impl RunnableCommand for ListCommand {
-    fn run(&self) -> Result<()> {
+    fn run(&self) -> ReplayResult<()> {
         let list_lines = Self::list()?;
         for line in list_lines {
             let line = line?;
@@ -20,7 +20,7 @@ impl RunnableCommand for ListCommand {
 }
 
 impl ListCommand {
-    pub fn list() -> Result<impl Iterator<Item = Result<String>>> {
+    pub fn list() -> ReplayResult<impl Iterator<Item = ReplayResult<String>>> {
         let iter = Session::iter_session_ids_rev()?;
         Ok(iter.enumerate().map(|(i, line_res)| {
             let line = line_res?;
@@ -98,7 +98,7 @@ mod tests {
         session_3.save_session(true).unwrap();
         let list_output: Vec<_> = ListCommand::list()
             .unwrap()
-            .collect::<std::result::Result<Vec<_>, _>>()
+            .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(
             format!(

@@ -2,7 +2,7 @@ use serde_json::Error as SerdeError;
 use std::result;
 use thiserror::Error;
 
-pub type Result<T> = result::Result<T, ReplayError>;
+pub type ReplayResult<T> = result::Result<T, ReplayError>;
 
 #[derive(Error, Debug)]
 pub enum ReplayError {

@@ -20,13 +20,13 @@ pub mod paths;
 pub mod pty;
 pub mod session;
 
-use errors::Result;
+use errors::ReplayResult;
 
 use crate::args::parse_command;
 
 /// Entrypoint called by the binary.
 /// Parses CLI arguments and run the appropriate command.
-pub fn run(args: &[String]) -> Result<()> {
+pub fn run(args: &[String]) -> ReplayResult<()> {
     let cmd = parse_command(args)?;
     cmd.run()
 }

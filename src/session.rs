@@ -1,4 +1,4 @@
-use crate::errors::{ReplayError, Result};
+use crate::errors::{ReplayError, ReplayResult};
 use crate::paths;
 use chrono::Utc;
 use rev_lines::RevLines;
@@ -26,7 +26,7 @@ pub struct MetaData {
     pub first_commands: Vec<String>,
 }
 
-fn first_two_commands<'de, D>(deserializer: D) -> std::result::Result<Vec<String>, D::Error>
+fn first_two_commands<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -44,7 +44,7 @@ impl SessionIndexFile {
         paths::replay_dir().join("session_idx")
     }
 
-    fn open_file() -> Result<std::fs::File> {
+    fn open_file() -> ReplayResult<std::fs::File> {
         Ok(std::fs::OpenOptions::new()
             .read(true)
             .create(true)
@@ -52,14 +52,14 @@ impl SessionIndexFile {
             .open(Self::get_path())?)
     }
 
-    pub fn push_session(session_id: &str) -> Result<()> {
+    pub fn push_session(session_id: &str) -> ReplayResult<()> {
         let mut file = Self::open_file()?;
         writeln!(file, "{}", session_id)?;
         Ok(())
     }
 
     /// Read the file by the end and give the byte offset of the nth line
-    fn get_line_offset_by_index(n: u32) -> Result<u64> {
+    fn get_line_offset_by_index(n: u32) -> ReplayResult<u64> {
         let mut file = Self::open_file()?;
         let mut offset = file.seek(SeekFrom::End(0))?;
         let mut buf = [0u8; 1];
@@ -114,7 +114,7 @@ impl SessionIndexFile {
 
     /// Read the line starting at a given byte position
     #[allow(dead_code)] // TODO: Remove this when the function will be used
-    fn read_line_at(offset: u64) -> Result<String> {
+    fn read_line_at(offset: u64) -> ReplayResult<String> {
         let mut file = Self::open_file()?;
         file.seek(SeekFrom::Start(offset))?;
         // We use a BufReader for the `read_until()` func
@@ -130,7 +130,7 @@ impl SessionIndexFile {
 
     /// Get the nth session id and remove it from the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn remove_session_id(n: u32) -> Result<String> {
+    pub fn remove_session_id(n: u32) -> ReplayResult<String> {
         let mut file = Self::open_file()?;
         let line_start_offset = Self::get_line_offset_by_index(n)?;
 
@@ -156,21 +156,21 @@ impl SessionIndexFile {
         Ok(session_id)
     }
 
-    pub fn get_session_id(index: u32) -> Result<String> {
+    pub fn get_session_id(index: u32) -> ReplayResult<String> {
         let line_offset = Self::get_line_offset_by_index(index)?;
         Self::read_line_at(line_offset)
     }
 
     /// Get the last session id without modifying the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn peek_session_id() -> Result<String> {
+    pub fn peek_session_id() -> ReplayResult<String> {
         let line_offset = Self::get_line_offset_by_index(0)?;
         Self::read_line_at(line_offset)
     }
 
     /// Get the last session id and remove it from the file
     #[allow(dead_code)] // TODO: Remove this when the function will be used
-    pub fn pop_session_id() -> Result<String> {
+    pub fn pop_session_id() -> ReplayResult<String> {
         let mut file = Self::open_file()?;
         let line_offset = Self::get_line_offset_by_index(0)?;
         let session_id = Self::read_line_at(line_offset)?;
@@ -183,7 +183,7 @@ impl SessionIndexFile {
 }
 
 impl Session {
-    pub fn new(description: Option<String>) -> Result<Self> {
+    pub fn new(description: Option<String>) -> ReplayResult<Self> {
         let user = whoami::username();
         let timestamp = Utc::now();
         Ok(Self {
@@ -224,7 +224,7 @@ impl Session {
         self.commands.last()
     }
 
-    fn load_from_files<T: DeserializeOwned>(session_id: &str) -> Result<T> {
+    fn load_from_files<T: DeserializeOwned>(session_id: &str) -> ReplayResult<T> {
         // Try compressed .zst first
         let zst_path = Session::get_session_path(session_id, "zst");
         if zst_path.try_exists()? {
@@ -242,20 +242,20 @@ impl Session {
         Ok(data)
     }
 
-    pub fn load_session_by_index(index: u32) -> Result<Self> {
+    pub fn load_session_by_index(index: u32) -> ReplayResult<Self> {
         let session_id = SessionIndexFile::get_session_id(index)?;
         Session::load_from_files(&session_id)
     }
 
-    pub fn load_metadata(session_id: &str) -> Result<MetaData> {
+    pub fn load_metadata(session_id: &str) -> ReplayResult<MetaData> {
         Session::load_from_files(session_id)
     }
 
-    pub fn load_last_session() -> Result<Self> {
+    pub fn load_last_session() -> ReplayResult<Self> {
         Self::load_session_by_index(0)
     }
 
-    pub fn save_session(&self, compress: bool) -> Result<()> {
+    pub fn save_session(&self, compress: bool) -> ReplayResult<()> {
         if compress {
             let file = std::fs::File::create(Self::get_session_path(&self.id, "zst"))?;
             let mut encoder = zstd::Encoder::new(file, DEFAULT_COMPRESSION_LEVEL)?;
@@ -270,7 +270,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn remove_session(index: u32) -> Result<()> {
+    pub fn remove_session(index: u32) -> ReplayResult<()> {
         let session_id = SessionIndexFile::remove_session_id(index)?;
         let zst_path = Session::get_session_path(&session_id, "zst");
         if zst_path.try_exists()? {
@@ -282,7 +282,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn remove_last_session() -> Result<()> {
+    pub fn remove_last_session() -> ReplayResult<()> {
         Self::remove_session(0)
     }
 
@@ -294,7 +294,7 @@ impl Session {
         paths::session_dir().join(format!("{}.{}", id, extension))
     }
 
-    pub fn iter_session_ids_rev() -> Result<impl Iterator<Item = Result<String>>> {
+    pub fn iter_session_ids_rev() -> ReplayResult<impl Iterator<Item = ReplayResult<String>>> {
         let file = SessionIndexFile::open_file()?;
         let rev_lines = RevLines::new(file);
         Ok(rev_lines.map(|line_res| line_res.map_err(ReplayError::from)))
