@@ -2,54 +2,43 @@
 
 Replay is a lightweight CLI tool to record, replay, and manage shell command sessions. Ideal for automation, reproducibility, and quick demonstrations.
 
+<p align="center">
+  <img src="demo.gif" alt="animated" width="80%" />
+</p>
+
 ## Installation
 
 ```sh
-cargo install replay
+cargo install replay_pty
 ```
+
 ## Usage 
+💡 Run `replay help` to see all available commands.  
+
+### Record a Session
 ```sh
-replay <COMMAND> [OPTIONS]
+replay record
 ```
+Use `replay record -h` to see all the options available for this command
 
-### Available Commands
-
+### Replay a Session
+To run a recorded session of commands : 
 ```sh
-replay run [OPTIONS] [SESSION_NAME]
+replay run # runs the last recorded session by default
 ```
+Use `replay run -h` to see all the options available for this command
 
-Run a replay on the specified session.
+## License
+Replay is licenced under MIT license ([LICENSE-MIT](./LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
-#### Arguments
-- `SESSION_NAME`: The name of the session to replay. If omitted, the last session will be used.
 
-#### Options
-- `-s`, `--show`: Show the commands without executing them.
-- `-d`, `--delay <ms>`: Delay (in milliseconds) between commands. Default to `0`. 
-- `-h`, `--help`: Show help for this commands.
+## Contributing
 
----
+Contributions are very welcome!
+Please see our [contributing guide](./CONTRIBUTING.md) for details.
 
-```sh
-replay record [SESSION_NAME]
-```
-Record a new session of shell commands. If a session name is provided, it will be used to label the recording.
+Thanks to all the people who already contributed!
 
---- 
-
-```sh
-replay help
-```
-Show help for the CLI or a specific subcommand.
-
-### Global Options
-- `-h`, `--help`: show general help.
-- `-V`, `--version`: show version information.
-
-## Git Hook
-
-To enable a pre-configured Git hook that automatically formats your code before each commit:
-```sh
-git config core.hooksPath .githooks
-```
-> Run these commands once after cloning the repository to ensure the hooks are active.
+<a href="https://github.com/ariel-os/ariel-os/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=baptleduc/replay" alt="All contributors" />
+</a>
