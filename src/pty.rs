@@ -21,7 +21,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
     no_compression: bool,                // disable compression
 ) -> ReplayResult<()> {
     terminal::enable_raw_mode()?;
-    let (bash_ready_sender, bash_ready_receiver) = mpsc::sync_channel::<()>(1);
+    let (ps1_received_sender, ps1_received_receiver) = mpsc::sync_channel::<()>(1);
     let (command_sent_sender, command_sent_receiver) = mpsc::sync_channel::<()>(1);
 
     let (mut pty_stdout, mut pty_stdin, child) = spawn_shell()?;
@@ -32,7 +32,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
         read_from_pty(
             pty_stdout,
             user_output,
-            bash_ready_sender,
+            ps1_received_sender,
             command_sent_receiver,
             ps1,
         )
@@ -42,7 +42,7 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
         user_input,
         pty_stdin,
         child,
-        bash_ready_receiver,
+        ps1_received_receiver,
         command_sent_sender,
         record_user_input,
         session_description,
@@ -227,7 +227,7 @@ fn read_from_pty<R: Read + Send, W: Write + Send>(
     ps1: char,
 ) -> ReplayResult<()> {
     let mut read_buf = [0u8; 1024];
-    let mut prompt_already_seen: bool = false;
+    let mut ps1_detected: bool = false;
     let re_non_printable =
         Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]|[\x01\x02]|\x1b\][^\x07]*\x07|\x1b\??\d*[hl]").unwrap();
 
@@ -237,12 +237,10 @@ fn read_from_pty<R: Read + Send, W: Write + Send>(
             break; // EOF
         }
 
-        // When the main thread will be blocked
-        // we suppose the CPU to run this thread as it is the only other one
-        // so just after a command will be sent, this thread will handle a
-        // new prompt detection turning prompt_already_seen to false
+        // After the main thread sends a command, reset `ps1_detected` to false.
+        // The next detected prompt (ending with `ps1`) will then signal that Bash is ready.
         if command_sent_receiver.try_recv().is_ok() {
-            prompt_already_seen = false;
+            ps1_detected = false;
         };
 
         user_output.write_all(&read_buf[..n])?;
@@ -254,9 +252,9 @@ fn read_from_pty<R: Read + Send, W: Write + Send>(
             .replace_all(&tail_str, "")
             .trim()
             .to_string();
-        if cleaned.ends_with(&ps1.to_string()) && !prompt_already_seen {
+        if cleaned.ends_with(&ps1.to_string()) && !ps1_detected {
             let _ = bash_ready_sender.send(());
-            prompt_already_seen = true;
+            ps1_detected = true;
         }
     }
 
