@@ -2,7 +2,7 @@ use std::io::{stdin, stdout};
 
 use super::RunnableCommand;
 use crate::errors::ReplayResult;
-use crate::pty::run_internal;
+use crate::pty::{RecordConfig, run_internal};
 use clap::Args;
 
 #[derive(Args, PartialEq, Eq, Debug)]
@@ -21,9 +21,10 @@ impl RunnableCommand for RecordCommand {
         run_internal(
             reader,
             writer,
-            true,
-            self.session_description.clone(),
-            self.no_compression,
+            RecordConfig {
+                record_input: true,
+                ..Default::default()
+            },
         )
     }
 }

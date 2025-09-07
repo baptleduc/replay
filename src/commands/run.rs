@@ -3,7 +3,7 @@
 use super::RunnableCommand;
 use crate::args;
 use crate::errors::ReplayResult;
-use crate::pty::{RawModeReader, run_internal};
+use crate::pty::{RawModeReader, RecordConfig, run_internal};
 use crate::session::Session;
 use clap::{Args, value_parser};
 use std::io::stdout;
@@ -41,7 +41,7 @@ impl RunnableCommand for RunCommand {
                 std::time::Duration::from_millis(self.delay),
             );
             let output = stdout();
-            run_internal(input, output, false, None, false)?;
+            run_internal(input, output, RecordConfig::default())?;
         }
         Ok(())
     }

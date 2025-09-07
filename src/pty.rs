@@ -13,17 +13,21 @@ type Reader = Box<dyn Read + Send>;
 type Writer = Box<dyn Write + Send>;
 type ChildProc = Box<dyn Child + Send + Sync>;
 
+#[derive(Default)]
+pub struct RecordConfig {
+    pub record_input: bool,                  // enable recording of typed commands
+    pub session_description: Option<String>, // optional session description
+    pub no_compression: bool,                // disable compression
+}
+
 pub fn run_internal<R: Read, W: Write + Send + 'static>(
-    user_input: R,                       // input from user (stdin, pipe…)
-    user_output: W,                      // output to user (stdout, file…)
-    record_user_input: bool,             // enable recording of typed commands
-    session_description: Option<String>, // optional session description
-    no_compression: bool,                // disable compression
+    user_input: R,               // input from user (stdin, pipe…)
+    user_output: W,              // output to user (stdout, file…)
+    record_config: RecordConfig, // input config (recording, description, compression)
 ) -> ReplayResult<()> {
     terminal::enable_raw_mode()?;
     let (ps1_received_sender, ps1_received_receiver) = mpsc::sync_channel::<()>(1);
     let (command_sent_sender, command_sent_receiver) = mpsc::sync_channel::<()>(1);
-
     let (mut pty_stdout, mut pty_stdin, child) = spawn_shell()?;
     let ps1 = get_last_ps1_char(&mut pty_stdin, &mut pty_stdout)?;
 
@@ -44,15 +48,13 @@ pub fn run_internal<R: Read, W: Write + Send + 'static>(
         child,
         ps1_received_receiver,
         command_sent_sender,
-        record_user_input,
-        session_description,
-        no_compression,
+        record_config,
     )?;
     terminal::disable_raw_mode()?;
     join_output_thread(output_reader)?;
 
-    if record_user_input {
-        println!("{}", exit_msg);
+    if let Some(msg) = exit_msg {
+        println!("{}", msg);
     }
 
     Ok(())
@@ -121,17 +123,15 @@ fn handle_user_input<R: Read, W: Write>(
     mut child: ChildProc,
     bash_ready_receiver: Receiver<()>,
     command_sent_sender: SyncSender<()>,
-    record_input: bool,
-    session_description: Option<String>,
-    no_compression: bool,
-) -> ReplayResult<String> {
+    record_config: RecordConfig,
+) -> ReplayResult<Option<String>> {
     // Main thread sends user input to bash stdin
     let mut buf = [0u8; 1]; // We only read one byte in raw mode
     let mut char_buffer = CharBuffer::new();
     let exit_re = Regex::new(r"^\s*exit\s*$").unwrap();
     let mut first_init = true;
-    let mut session: Option<Session> = if record_input {
-        Some(Session::new(session_description)?)
+    let mut session: Option<Session> = if record_config.record_input {
+        Some(Session::new(record_config.session_description)?)
     } else {
         None
     };
@@ -211,12 +211,16 @@ fn handle_user_input<R: Read, W: Write>(
         }
     }
 
-    if let Some(sess) = session {
-        sess.save_session(!no_compression)?;
-        return Ok(String::from("Session saved"));
-    }
+    let session_saved = if let Some(sess) = session {
+        sess.save_session(!record_config.no_compression)?;
+        Some("Session saved".to_string())
+    } else if record_config.record_input {
+        Some("No session saved".to_string())
+    } else {
+        None
+    };
 
-    Ok(String::from("No session saved"))
+    Ok(session_saved)
 }
 
 fn read_from_pty<R: Read + Send, W: Write + Send>(
@@ -324,8 +328,12 @@ mod test {
 
     /// Helper to run a fake session and return the list of recorded commands.
     fn run_and_get_commands(input: &[u8]) -> Vec<String> {
+        let test_input_config: RecordConfig = RecordConfig {
+            record_input: true,
+            ..Default::default()
+        };
         let reader = RawModeReader::with_input(input);
-        let _ = run_internal(reader, sink(), true, None, false);
+        let _ = run_internal(reader, sink(), test_input_config);
 
         Session::load_last_session()
             .map(|sess| {
