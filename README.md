@@ -12,8 +12,8 @@ Replay is a lightweight CLI tool to record, replay, and manage shell command ses
 cargo install replay_pty
 ```
 
-## Usage 
-💡 Run `replay help` to see all available commands.  
+## Usage
+💡 Run `replay help` to see all available commands.
 
 ### Record a Session
 ```sh
@@ -22,7 +22,7 @@ replay record
 Use `replay record -h` to see all the options available for this command
 
 ### Replay a Session
-To run a recorded session of commands : 
+To run a recorded session of commands :
 ```sh
 replay run # runs the last recorded session by default
 ```
@@ -39,6 +39,6 @@ Please see our [contributing guide](./CONTRIBUTING.md) for details.
 
 Thanks to all the people who already contributed!
 
-<a href="https://github.com/ariel-os/ariel-os/graphs/contributors">
+<a href="https://github.com/baptleduc/replay/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=baptleduc/replay" alt="All contributors" />
 </a>
