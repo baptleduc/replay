@@ -4,7 +4,7 @@
 //! It will ensure we get the correct args and then return
 //! a correct Structure to run the corresponding commands
 use crate::{
-    commands::{RunnableCommand, clear, drop, list, record, run},
+    commands::{clear, drop, list, record, run, RunnableCommand},
     errors::ReplayResult,
 };
 use clap::{Parser, Subcommand};

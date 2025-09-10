@@ -3,9 +3,9 @@
 use super::RunnableCommand;
 use crate::args;
 use crate::errors::ReplayResult;
-use crate::pty::{RawModeReader, RecordConfig, run_internal};
+use crate::pty::{run_internal, RawModeReader, RecordConfig};
 use crate::session::Session;
-use clap::{Args, value_parser};
+use clap::{value_parser, Args};
 use std::io::stdout;
 
 /// CLI command to run a recorded session.
