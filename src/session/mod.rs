@@ -1,13 +1,17 @@
-use crate::errors::{ReplayError, ReplayResult};
+use crate::errors::ReplayResult;
 use crate::paths;
 use chrono::Utc;
-use rev_lines::RevLines;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::BufReader;
 use std::path::PathBuf;
 
+mod display;
+pub mod index;
+
+pub use display::DisplayMeta;
+pub use index::SessionIndexFile;
 const DEFAULT_COMPRESSION_LEVEL: i32 = 3;
 
 #[derive(Default, Serialize, Deserialize)]
@@ -36,128 +40,6 @@ where
         .take(2)
         .map(|cmd| cmd.replace("\r", ""))
         .collect())
-}
-struct SessionIndexFile;
-
-impl SessionIndexFile {
-    fn get_path() -> PathBuf {
-        paths::replay_dir().join("session_idx")
-    }
-
-    fn open_file() -> ReplayResult<std::fs::File> {
-        Ok(std::fs::OpenOptions::new()
-            .read(true)
-            .create(true)
-            .append(true)
-            .open(Self::get_path())?)
-    }
-
-    pub fn push_session(session_id: &str) -> ReplayResult<()> {
-        let mut file = Self::open_file()?;
-        writeln!(file, "{}", session_id)?;
-        Ok(())
-    }
-
-    /// Read the file by the end and give the byte offset of the nth line
-    fn get_line_offset_by_index(n: u32) -> ReplayResult<u64> {
-        let mut file = Self::open_file()?;
-        let mut offset = file.seek(SeekFrom::End(0))?;
-        let mut buf = [0u8; 1];
-        let mut newlines_count = 0;
-
-        if offset == 0 {
-            return Err(ReplayError::SessionError("No replay entries found".into()));
-        }
-
-        // If the file is not empty, check the last byte
-        file.seek(SeekFrom::Start(offset - 1))?;
-        file.read_exact(&mut buf)?;
-
-        // If the last byte is a newline, skip it
-        // This ensures we don't count an extra empty line at the end
-        if buf[0] == b'\n' {
-            offset -= 1;
-        }
-
-        // Now we scan the file backwards to count newlines
-        while offset > 0 {
-            // Move back by one byte
-            offset -= 1;
-            file.seek(SeekFrom::Start(offset))?;
-            file.read_exact(&mut buf)?;
-
-            // If we encounter a newline, we found the end of the previous line
-            if buf[0] == b'\n' {
-                newlines_count += 1;
-
-                // If we've counted enough newlines to reach the target line
-                // `n + 1` because index 0 refers to the last line, index 1 to the second last, etc.
-                if newlines_count == n + 1 {
-                    // The start of the target line is just after this newline
-                    return Ok(offset + 1);
-                }
-            }
-        }
-
-        if newlines_count <= n {
-            if n == newlines_count {
-                return Ok(0);
-            } else {
-                return Err(ReplayError::SessionError(
-                    "Replay index out of range".into(),
-                ));
-            }
-        }
-
-        Err(ReplayError::SessionError("No replay entries found".into()))
-    }
-
-    /// Read the line starting at a given byte position
-    fn read_line_at(offset: u64) -> Result<String, ReplayError> {
-        let mut file = Self::open_file()?;
-        file.seek(SeekFrom::Start(offset))?;
-        // We use a BufReader for the `read_until()` func
-        let mut reader = BufReader::new(file);
-        let mut buf = Vec::new();
-        // We read until a \n instead of reading the entire file
-        reader.read_until(b'\n', &mut buf)?;
-        let line = String::from_utf8_lossy(&buf)
-            .trim_end_matches('\n')
-            .to_string();
-        Ok(line)
-    }
-
-    /// Get the nth session id and remove it from the file
-    pub fn remove_session_id(n: u32) -> ReplayResult<String> {
-        let mut file = Self::open_file()?;
-        let line_start_offset = Self::get_line_offset_by_index(n)?;
-
-        let session_id = Self::read_line_at(line_start_offset)?;
-
-        // Calculate the position of next line
-        // Note: `read_line_at` returns the line without the trailing newline character,
-        // so `session_id.len()` does not include the newline. The actual line in the file
-        // is `session_id.len() + 1` bytes (session ID plus '\n'), so this calculation is correct.
-        let next_line_offset = line_start_offset + session_id.len() as u64 + 1;
-
-        // Read the end of the file after this line
-        let mut rest = Vec::new();
-        file.seek(SeekFrom::Start(next_line_offset))?;
-        file.read_to_end(&mut rest)?;
-
-        // Truncate and rewrite the rest
-        file.set_len(line_start_offset)?;
-        file.seek(SeekFrom::Start(line_start_offset))?;
-        file.write_all(&rest)?;
-        file.flush()?;
-
-        Ok(session_id)
-    }
-
-    pub fn get_session_id(index: u32) -> ReplayResult<String> {
-        let line_offset = Self::get_line_offset_by_index(index)?;
-        Self::read_line_at(line_offset)
-    }
 }
 
 impl Session {
@@ -272,16 +154,21 @@ impl Session {
         paths::session_dir().join(format!("{}.{}", id, extension))
     }
 
-    pub fn iter_session_ids_rev() -> ReplayResult<impl Iterator<Item = ReplayResult<String>>> {
-        let file = SessionIndexFile::open_file()?;
-        let rev_lines = RevLines::new(file);
-        Ok(rev_lines.map(|line_res| line_res.map_err(ReplayError::from)))
+    pub fn get_all_session_metadata() -> ReplayResult<impl Iterator<Item = ReplayResult<MetaData>>>
+    {
+        Ok(
+            SessionIndexFile::iter_session_ids_rev()?.map(|index| -> ReplayResult<MetaData> {
+                let index = index?;
+                Session::load_metadata_by_index(&index)
+            }),
+        )
     }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::errors::ReplayError;
     use serial_test::serial;
 
     pub fn setup() {
