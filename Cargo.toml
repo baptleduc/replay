@@ -2,7 +2,7 @@
 name = "replay_pty"
 version = "0.0.1"
 authors = ["leduclean", "baptleduc"]
-edition = "2024"
+edition = "2021"
 description = "A CLI tool to record and replay shell commands"
 readme = "README.md"
 license = "MIT"
