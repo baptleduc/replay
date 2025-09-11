@@ -1,6 +1,6 @@
 [package]
 name = "replay_pty"
-version = "0.0.1"
+version = "1.0.0"
 authors = ["leduclean", "baptleduc"]
 edition = "2021"
 description = "A CLI tool to record and replay shell commands"
