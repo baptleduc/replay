@@ -1,8 +1,7 @@
 use super::RunnableCommand;
 use crate::errors::ReplayResult;
-use crate::session::MetaData;
+use crate::session::DisplayMeta;
 use crate::session::Session;
-use chrono::Utc;
 use clap::Args;
 
 #[derive(Args, PartialEq, Eq, Debug)]
@@ -10,68 +9,21 @@ pub struct ListCommand {}
 
 impl RunnableCommand for ListCommand {
     fn run(&self) -> ReplayResult<()> {
-        let list_lines = Self::list()?;
-        for line in list_lines {
-            let line = line?;
-            println!("{}", line);
+        for session_infos in Self::list()? {
+            println!("{}", session_infos?)
         }
         Ok(())
     }
 }
 
 impl ListCommand {
-    pub fn list() -> ReplayResult<impl Iterator<Item = ReplayResult<String>>> {
-        let iter = Session::iter_session_ids_rev()?;
-        Ok(iter.enumerate().map(|(i, line_res)| {
-            let line = line_res?;
-            let session_metadata = Session::load_metadata_by_index(&line)?;
-            Ok(format!(
-                "replay@{{{}}}: {}",
-                i,
-                Self::display_metadata(session_metadata)
-            ))
-        }))
-    }
-    fn truncate_description(line: &str, max_len: usize) -> String {
-        let truncated: String = line.chars().take(max_len).collect();
-        if line.chars().count() > max_len {
-            truncated + "..."
-        } else {
-            truncated
-        }
-    }
-
-    fn display_metadata(metadata: MetaData) -> String {
-        if let Some(dess) = metadata.description {
-            let list_message = format!(
-                "{}, message: {}",
-                Self::adapt_date_metadata(metadata.timestamp),
-                dess,
-            );
-            Self::truncate_description(&list_message, 50)
-        } else {
-            let first_commands_stylized = metadata.first_commands.join(" | ");
-            let list_message = format!(
-                "{}, commands: {}",
-                Self::adapt_date_metadata(metadata.timestamp),
-                first_commands_stylized,
-            );
-            Self::truncate_description(&list_message, 50)
-        }
-    }
-
-    fn adapt_date_metadata(timestamp: chrono::DateTime<Utc>) -> String {
-        let duration = Utc::now().signed_duration_since(timestamp);
-
-        if duration.num_days() > 0 {
-            format!("{} days ago", duration.num_days())
-        } else if duration.num_hours() > 0 {
-            format!("{} hours ago", duration.num_hours())
-        } else if duration.num_minutes() > 0 {
-            format!("{} minutes ago", duration.num_minutes())
-        } else {
-            format!("{} seconds ago", duration.num_seconds())
-        }
+    fn list() -> ReplayResult<impl Iterator<Item = ReplayResult<String>>> {
+        Ok(Session::get_all_session_metadata()?.enumerate().map(
+            |(i, metadata)| -> ReplayResult<String> {
+                let md = metadata?;
+                Ok(DisplayMeta { index: i, meta: md }.to_string())
+            },
+        ))
     }
 }
 
@@ -79,6 +31,7 @@ impl ListCommand {
 mod tests {
     use super::*;
     use crate::session::tests::setup;
+    use regex::Regex;
     use serial_test::serial;
 
     #[test]
@@ -100,26 +53,14 @@ mod tests {
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(
-            format!(
-                "replay@{{0}}: {}, message: session message is too lon...",
-                ListCommand::adapt_date_metadata(session_3.timestamp),
-            ),
-            list_output[0]
-        );
-        assert_eq!(
-            format!(
-                "replay@{{1}}: {}, message: test session 2",
-                ListCommand::adapt_date_metadata(session_2.timestamp)
-            ),
-            list_output[1]
-        );
-        assert_eq!(
-            format!(
-                "replay@{{2}}: {}, commands: ls | echo test",
-                ListCommand::adapt_date_metadata(session_1.timestamp)
-            ),
-            list_output[2]
-        );
+        let re1 = Regex::new(
+            r"^replay@\{0\}: \d+ seconds ago, message: session message is too lon\.\.\.$",
+        )
+        .unwrap();
+        assert!(re1.is_match(&list_output[0]));
+        let re2 = Regex::new(r"^replay@\{1\}: \d+ seconds ago, message: test session 2$").unwrap();
+        assert!(re2.is_match(&list_output[1]));
+        let re3 = Regex::new(r"^replay@\{2\}: \d+ seconds ago, commands: ls | echo test$").unwrap();
+        assert!(re3.is_match(&list_output[2]));
     }
 }
