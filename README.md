@@ -22,11 +22,8 @@ replay record
 ```
 Use `replay record -h` to see all the options available for this command.
 
-Recording a session automatically saves it in a **stash-like index**, similar to how git stash works.
-For example, the most recent session is accessible as:
-```sh
-  replay run replay@{0}
-```
+Recording a session automatically saves it in a **stash-like index** with identifiers such as `replay@{0}`, similar to how git stash works.
+
 ### Replay a Session
 To run a recorded session of commands :
 ```sh
