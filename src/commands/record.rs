@@ -2,7 +2,7 @@ use std::io::{stdin, stdout};
 
 use super::RunnableCommand;
 use crate::errors::ReplayResult;
-use crate::pty::{RecordConfig, run_internal};
+use crate::pty::{run_internal, RecordConfig};
 use clap::Args;
 
 #[derive(Args, PartialEq, Eq, Debug)]

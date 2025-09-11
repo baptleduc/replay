@@ -2,7 +2,7 @@ use crate::errors::{ReplayError, ReplayResult};
 use crate::paths;
 use chrono::Utc;
 use rev_lines::RevLines;
-use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};

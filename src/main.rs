@@ -3,7 +3,7 @@
 // Argument parsing, command dispatching and core logic.
 
 use crossterm::terminal;
-use replay::run;
+use replay_pty::run;
 use std::{env, process};
 
 fn main() {

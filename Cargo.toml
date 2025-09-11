@@ -1,7 +1,8 @@
 [package]
-name = "replay"
-version = "0.1.0"
-edition = "2024"
+name = "replay_pty"
+version = "0.0.1"
+authors = ["leduclean", "baptleduc"]
+edition = "2021"
 description = "A CLI tool to record and replay shell commands"
 readme = "README.md"
 license = "MIT"
@@ -9,6 +10,11 @@ repository = "https://github.com/baptleduc/replay"
 
 [lib]
 path = "src/lib.rs"
+
+[[bin]]
+name = "replay"
+path = "src/main.rs"
+
 
 [dependencies]
 anyhow = "1.0.98"
